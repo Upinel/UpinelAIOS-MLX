@@ -457,9 +457,44 @@ won't answer.
 
 Each is an MLX pack with a verified MTP head, which is what makes the
 speculative decoding work. The HauhauCS Aggressive fine-tune is the basis of
-the default. `moe` is the speed pick: a mixture-of-experts model with only 3B
-parameters active per token, so it is several times faster than the dense 27B
-for the same memory footprint — its publisher measured depth 1 at 89 tok/s.
+the default.
+
+`moe` is the speed pick, and it is the answer if you want the fast
+mixture-of-experts class **and** uncensored output. Measured here on an M5 Pro,
+at MTP depth 1:
+
+| context | dense 27B (`4bit`) | `moe` (35B-A3B) | gain |
+|---:|---:|---:|---:|
+| 512 | 42–51 t/s | **83 t/s** | ~1.7× |
+| 8,192 | ~38 t/s | **72 t/s** | ~1.9× |
+| 32,768 | ~22 t/s | **61 t/s** | ~2.8× |
+
+The gap widens with context, which is where agents actually live: at 32k the MoE
+is nearly three times faster. Prefill also improves, from ~440 to ~1,200 t/s.
+MTP depth 1 is optimal for it and depth 2 for the dense model; both are recorded
+per model.
+
+> **A naming trap worth knowing.** Packs literally called
+> `...-MTPLX-Optimized-Speed` also exist in uncensored variants, and they do
+> **not** run on MTPLX. They are built for a different runtime (`lightning-mlx`)
+> with a different MTP tensor layout, and MTPLX refuses them:
+>
+> ```
+> tier              architecture-compatible-but-unverified
+> can_run           False
+> runtime_compat    needs-grafting
+> message           ... local MTP artifact inspection did not pass;
+>                   refusing to run without repair.
+> ```
+>
+> The name means "packaged for a runtime", not "runs on MTPLX". The `moe` entry
+> above is verified-native with a complete contract (`can_run: True`), which is
+> what actually matters. If a model is not in this table, check it before
+> downloading 20 GB:
+>
+> ```bash
+> mtplx inspect <model-dir> --json    # look for "can_run": true
+> ```
 
 **On Gemma 4.** It is not in the list because no uncensored Gemma 4 pack with a
 working MTP head exists for MTPLX. The abundant uncensored Gemma 4 releases —

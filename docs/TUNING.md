@@ -65,6 +65,41 @@ mature there, and llama.cpp is easier to embed. For raw agent throughput, MLX.
 
 ---
 
+## 1. Choosing the model — the only lever that changes the order of magnitude
+
+Two uncensored options, both verified-native, measured on the reference M5 Pro:
+
+| context | dense 27B (`4bit`, 15 GB) | MoE 35B-A3B (`moe`, 22 GB) |
+|---:|---:|---:|
+| 512 | 42–51 t/s | **83 t/s** |
+| 8,192 | ~38 t/s | **72 t/s** |
+| 32,768 | ~22 t/s | **61 t/s** |
+| MTP depth | 2 | 1 |
+
+The dense 27B reads all ~15 GB of weights per token. The MoE reads only its 3B
+active slice, so it is roughly twice as fast short-context and nearly three
+times as fast at 32k — and long context is where agents spend their time.
+
+Switch with one line, or press `m` in the dashboard:
+
+```conf
+MODEL="moe"
+```
+
+Everything else on this list is worth single-digit percent by comparison.
+
+### Checking a model before you download it
+
+```bash
+mtplx inspect <model-dir> --json     # want "can_run": true
+```
+
+Packs named `-MTPLX-Optimized-Speed` are not automatically usable: several
+uncensored ones are built for `lightning-mlx` with a different MTP tensor
+layout, and MTPLX refuses them with
+`can_run: false, runtime_compat: needs-grafting`. Verify before spending 20 GB
+of bandwidth.
+
 ## 1a. Applying a change
 
 `env.conf` is read when the server starts and passed to the runtime as
