@@ -45,7 +45,19 @@ if [[ "$MODE" == "tune" ]]; then
   mtplx tune --model "$MODEL_DIR" --retune --depths 1,2,3 \
       --max-tokens 256 --json > "$RUN_DIR/tune.raw.json" 2> "$RUN_DIR/tune.err" \
     || die "Tune failed. See $RUN_DIR/tune.err"
+  TUNE_FILE="$(tune_file_for_current_model)"
   cp "$RUN_DIR/tune.raw.json" "$TUNE_FILE"
+  # Stamp which model this was measured on; without it the result is ambiguous
+  # as soon as MODEL changes.
+  python3 - "$TUNE_FILE" "$MODEL_REPO" <<'PYSTAMP'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit
+d["model_repo"] = sys.argv[2]
+json.dump(d, open(sys.argv[1], "w"), indent=2)
+PYSTAMP
   python3 - "$TUNE_FILE" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))

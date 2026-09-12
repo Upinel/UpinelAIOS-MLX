@@ -116,7 +116,20 @@ if (( DO_TUNE )); then
     warn "Model directory missing, skipping tune: $MODEL_DIR"
   elif mtplx tune --model "$MODEL_DIR" --retune --depths 1,2,3 \
         --max-tokens 256 --json > "$RUN_DIR/tune.raw.json" 2> "$RUN_DIR/tune.err"; then
+    TUNE_FILE="$(tune_file_for_current_model)"
     cp "$RUN_DIR/tune.raw.json" "$TUNE_FILE"
+    # Stamp which model this was measured on. Without it a result is
+    # ambiguous the moment someone switches MODEL.
+    python3 - "$TUNE_FILE" "$MODEL_REPO" <<'PYSTAMP'
+import json, sys
+path, repo = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open(path))
+except Exception:
+    raise SystemExit
+d["model_repo"] = repo
+json.dump(d, open(path, "w"), indent=2)
+PYSTAMP
     DEPTH="$(tuned_depth)"
     ok "Fastest MTP depth on this Mac: ${DEPTH:-unknown}"
     python3 - "$TUNE_FILE" <<'PY' 2>/dev/null || true

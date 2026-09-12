@@ -49,7 +49,8 @@ and proposes exactly these numbers for you.
 plenty left for macOS, your editor and a browser. That is what this was built
 and measured on.
 
-Disk: roughly 25 GB per model. The 4-bit build is 15 GB, the 6-bit 23 GB.
+Disk: roughly 25 GB per model. The dense 4-bit build is 15 GB, the 6-bit 23 GB,
+the MoE 21 GB. `install.sh` downloads only the model you have selected.
 
 ## Estimated throughput
 
@@ -75,7 +76,8 @@ against published MTPLX figures. Treat these as order-of-magnitude:
 | M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
 | M3 / M4 base | 25–35 t/s | 10–15 t/s |
 | M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
-| **M5 Pro** (measured) | **42–51 t/s** | **17 t/s** |
+| **M5 Pro**, dense 27B (measured) | **42–51 t/s** | **17 t/s** |
+| **M5 Pro**, MoE 35B-A3B (measured) | **78 t/s** | **125 t/s** |
 | M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
 | M3 Ultra | 60–75 t/s | 22–28 t/s |
 
@@ -97,16 +99,33 @@ stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×
   depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not viable.
 
 **But 75+ t/s is reachable — with a different model.** A mixture-of-experts
-checkpoint only computes its active parameters per token. `Qwen3.6-35B-A3B`
-has 35B total but **3B active**, so each token reads roughly a tenth as many
-weights:
+checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
+but **3B active**, so each token reads roughly a tenth as many weights:
 
 ```conf
-MODEL="Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed"   # 21 GB, MoE 3B active
+MODEL="moe"      # Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed, 21 GB
 ```
 
-This is the right trade if raw speed matters more than a dense 27B's quality.
-The cost is disk and load time (21 GB), not memory bandwidth.
+Measured here, on the same M5 Pro, with MTP depth 1:
+
+| context | dense 27B (default) | MoE 35B-A3B | gain |
+|---:|---:|---:|---:|
+| 512 | 42–51 t/s | **78 t/s** | ~1.7× |
+| 8,192 | ~38 t/s | **208 t/s** | ~5.5× |
+| 32,768 | ~22 t/s | **125 t/s** | ~5.7× |
+
+Prefill improves as well — 1,837 t/s against 444 t/s — so long prompts arrive
+roughly four times sooner.
+
+**The trade is not free.** `Qwen3.6-35B-A3B` is Qwen's own aligned model, not an
+uncensored fine-tune, and it is a different base generation. The dense 4-bit
+default remains the pick for uncensored output and for the specific HauhauCS
+fine-tune; the MoE is the pick when throughput is what you care about. Both are
+installed with `./install.sh` and switched with one line in `env.conf`.
+
+MTP depth 1 is optimal for the MoE and depth 2 for the dense model — tuning
+results are stored per model in `run/tuning-<model>.json`, so switching models
+does not silently reuse the wrong depth.
 
 ---
 

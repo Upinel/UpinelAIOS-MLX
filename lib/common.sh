@@ -209,10 +209,40 @@ wait_healthy() {
   return 1
 }
 
+# Where a tune result for the currently selected model belongs.
+tune_file_for_current_model() {
+  printf '%s/tuning-%s.json' "$RUN_DIR" "${MODEL_REPO//\//--}"
+}
+
 # Read the tuned MTP depth written by `mtplx tune` / install.sh.
+#
+# Results are per model: depth 2 is right for the dense 27B and depth 1 for the
+# MoE, so one shared file would apply the wrong depth the moment MODEL changed.
+# A tuning result is only honoured for the model it was measured on. The
+# pre-split shared file has no model recorded and is accepted only for the
+# model this bundle ships as default; anything else falls through to the
+# runtime default rather than inheriting a depth tuned for a different model.
 tuned_depth() {
-  [[ -f "$TUNE_FILE" ]] || { echo ""; return; }
-  python3 - "$TUNE_FILE" <<'PY' 2>/dev/null || true
+  local path="" recorded=""
+  if [[ -n "${MODEL_REPO:-}" ]]; then
+    path="$RUN_DIR/tuning-${MODEL_REPO//\//--}.json"
+    [[ -f "$path" ]] || path=""
+  fi
+  if [[ -z "$path" ]] && [[ -f "$TUNE_FILE" ]]; then
+    recorded="$(python3 -c '
+import json,sys
+try: print(json.load(open(sys.argv[1])).get("model_repo") or "")
+except Exception: print("")
+' "$TUNE_FILE" 2>/dev/null || true)"
+    # Empty means a legacy file: usable only for the default model.
+    if [[ -n "$recorded" ]]; then
+      [[ "$recorded" == "$MODEL_REPO" ]] && path="$TUNE_FILE"
+    elif [[ "$MODEL_REPO" == "$(model_repo_for 4bit)" ]]; then
+      path="$TUNE_FILE"
+    fi
+  fi
+  [[ -n "$path" ]] || { echo ""; return; }
+  python3 - "$path" <<'PY' 2>/dev/null || true
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
