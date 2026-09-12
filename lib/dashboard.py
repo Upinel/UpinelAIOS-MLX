@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.request
 from collections import deque
@@ -499,7 +500,45 @@ def line_chart(values, width, height=4):
     return ["".join(r) for r in rows], lo, hi
 
 
+def num(value, default=0.0):
+    """
+    Coerce a telemetry value to float.
+
+    MTPLX publishes `null` for a field it has not measured yet - most often
+    decode_tok_s while a long prompt is still prefilling - and JSON `null`
+    becomes Python None. `d.get(key, 0)` does NOT protect against that: the key
+    is present, so the default is never used and the None flows into a format
+    specifier and raises. Everything numeric that comes from telemetry goes
+    through here.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def lp_num(value, default=0):
+    """Integer coercion for a telemetry count."""
+    try:
+        return int(num(value, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def fmt_num(value, spec=".1f", suffix="", default="--"):
+    """Format a possibly-None telemetry number, falling back to `default`."""
+    if value is None:
+        return default
+    try:
+        return format(float(value), spec) + suffix
+    except (TypeError, ValueError, ValueError):
+        return default
+
+
 def human_gb(gb):
+    gb = num(gb)
     if gb >= 100:
         return f"{gb:.0f}G"
     if gb >= 10:
@@ -581,6 +620,8 @@ class Dashboard:
         self._clients_cache = (0, [])
         self._thermal_cache = (0, "unknown")
         self._frame = 0
+        self._error_count = 0
+        self._last_error = ""
 
     # ── one sample ───────────────────────────────────────────────────────────
     def collect(self):
@@ -761,7 +802,7 @@ class Dashboard:
         right = [f"  {BOLD}ENDPOINT PROCESS{RESET}"]
         if mem and mem.get("ok"):
             def gb(key):
-                return mem.get(key, 0) / 1024 ** 3
+                return num(mem.get(key)) / 1024 ** 3
 
             total_gb = gb("active_memory_bytes")
             span = max(total_gb, 1.0)
@@ -798,12 +839,20 @@ class Dashboard:
             for req in s["in_flight"][:2]:
                 lp = req.get("last_progress") or {}
                 rid = (req.get("request_id") or "")[:14]
-                act.append(f"  {CYAN}{rid}\u2026{RESET} {(req.get('age_s') or 0):>5.0f}s"
+                # Guard and format the SAME field. The original code tested
+                # completion_tokens but formatted decode_tok_s, so a request in
+                # prefill - tokens counted, decode rate still null - crashed the
+                # whole dashboard with a TypeError.
+                progress = ""
+                if lp.get("completion_tokens") is not None:
+                    progress = (f"  {GREEN}{lp['completion_tokens']} tok"
+                                f" @ {fmt_num(lp.get('decode_tok_s'), '.1f', ' t/s')}"
+                                f"{RESET}")
+                act.append(f"  {CYAN}{rid}\u2026{RESET} "
+                           f"{fmt_num(req.get('age_s'), '>5.0f', 's')}"
                            f" {DIM}{(req.get('session_id') or '')[:12]}{RESET}"
-                           f" {req.get('prompt_tokens', 0)} ctx"
-                           + (f"  {GREEN}{lp.get('completion_tokens')} tok"
-                              f" @ {lp.get('decode_tok_s', 0):.1f} t/s{RESET}"
-                              if lp.get("completion_tokens") is not None else ""))
+                           f" {lp_num(req.get('prompt_tokens'))} ctx"
+                           + progress)
                 prev = (req.get("prompt_preview") or "").replace("\n", " ")
                 if prev:
                     act.append(f"    {DIM}\u201c{truncate(prev, width // 2 - 8)}{RESET}")
@@ -830,7 +879,7 @@ class Dashboard:
         than the chart, and letting it dictate the block height is what pushed
         the whole panel out of a 24-row terminal.
         """
-        hist = [h.get("tok_s", 0.0) for h in (s.get("live_history") or [])
+        hist = [num(h.get("tok_s")) for h in (s.get("live_history") or [])
                 if isinstance(h, dict)]
         lw, _ = col_widths(
             [f"  {BOLD}TOKEN RATE{RESET}  {DIM}live{RESET}"
@@ -850,7 +899,8 @@ class Dashboard:
             detail.append(("total", f"{logt['completion'] + logt['prompt']:,}"))
             detail.append(("requests", f"{logt['requests']:,}"))
         if life:
-            detail.append(("restart", f"{life.get('completion_tokens_total', 0):,}"))
+            detail.append(("restart",
+                           f"{int(num(life.get('completion_tokens_total'))):,}"))
         # Always keep at least 'output'; add rows only while they fit. The cap
         # leaves room for the blank row that separates this block from the next.
         counter_cap = max(1, max_rows - 1)
@@ -980,6 +1030,64 @@ class Dashboard:
 
         return SET_TITLE + HOME + "\n".join(x + CLR_EOL for x in L) + CLR_EOS
 
+    def _log_fault(self, detail):
+        """Append a render fault to run/dashboard.err, trimmed to one file."""
+        path = self.cfg.get("error_log")
+        if not path:
+            return
+        try:
+            if os.path.exists(path) and os.path.getsize(path) > 262144:
+                os.replace(path, path + ".1")
+            with open(path, "a") as fh:
+                fh.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                         f"frame {self._frame} ---\n{detail}")
+        except OSError:
+            pass
+
+    def _fault_frame(self, s):
+        """
+        Minimal but useful frame when rendering failed.
+
+        The system numbers are collected before rendering, so they are still
+        good; only the panel layout is suspect. Showing them means the dashboard
+        remains worth watching even while a panel is broken.
+        """
+        width, _ = term_size()
+        width = max(60, min(width, 200))
+        L = [
+            f"{BOLD}{WINDOW_TITLE}{RESET}"
+            f"{' ' * max(1, width - len(WINDOW_TITLE) - 26)}"
+            f"{RED}\u25cf display error{RESET}",
+            DIM + "\u2500" * width + RESET,
+            f"  {YELLOW}The dashboard hit a rendering fault and degraded rather "
+            f"than exiting.{RESET}",
+            f"  {DIM}{self._last_error.strip().splitlines()[-1][:width - 6]}{RESET}",
+            "",
+        ]
+        if s.get("cpu") is not None:
+            L.append(f"  {'cpu':<12}{s['cpu']:.1f}%")
+        if s.get("gpu") is not None:
+            L.append(f"  {'gpu':<12}{s['gpu']:.0f}%")
+        if s.get("ram_total_gb"):
+            L.append(f"  {'ram used':<12}{human_gb(s.get('ram_used_gb'))}"
+                     f" / {s['ram_total_gb']:.0f} GB")
+        if s.get("live_tps"):
+            L.append(f"  {'decode':<12}{fmt_num(s['live_tps'], '.1f', ' t/s')}")
+        L += [
+            "",
+            f"  {DIM}in-flight {len(s.get('in_flight') or [])}"
+            f"   sessions {s.get('sessions_n', 0)}"
+            f"   faults this run: {self._error_count}{RESET}",
+            f"  {DIM}detail logged to "
+            f"{self.cfg.get('error_log', '(none)')}{RESET}",
+            "",
+            f"  {DIM}Ctrl-C to exit{RESET}",
+        ]
+        L = [truncate(x, width) if len(strip_ansi(x)) > width else x for x in L]
+        if not TTY_MODE:
+            return "\n".join(strip_ansi(x) for x in L) + "\n"
+        return SET_TITLE + HOME + "\n".join(x + CLR_EOL for x in L) + CLR_EOS
+
     def run(self):
         if TTY_MODE:
             sys.stdout.write(SET_TITLE + HIDE_CURSOR)
@@ -988,7 +1096,19 @@ class Dashboard:
             while True:
                 started = time.time()
                 s = self.collect()
-                sys.stdout.write(self.render(s))
+                try:
+                    frame = self.render(s)
+                except Exception:                              # noqa: BLE001
+                    # This is a long-running display. A fault in one panel must
+                    # not kill the tool and dump a traceback over the frame -
+                    # that is exactly how the decode_tok_s bug announced itself.
+                    # Show a degraded frame, keep running, and leave the detail
+                    # in a log so it can actually be fixed.
+                    self._error_count += 1
+                    self._last_error = traceback.format_exc()
+                    self._log_fault(self._last_error)
+                    frame = self._fault_frame(s)
+                sys.stdout.write(frame)
                 sys.stdout.flush()
                 if self.args.iterations and self.args.iterations > 0:
                     self.args.iterations -= 1
@@ -1056,7 +1176,7 @@ def print_once(cfg, snap):
                            ("kv cache", "cache_memory_bytes"),
                            ("total", "active_memory_bytes"),
                            ("peak", "peak_memory_bytes")):
-            line(label, f"{mem.get(key, 0) / 1024 ** 3:.2f} GB")
+            line(label, f"{num(mem.get(key)) / 1024 ** 3:.2f} GB")
     else:
         line("memory", "no telemetry")
 
@@ -1082,7 +1202,8 @@ def print_once(cfg, snap):
             line("total", f"{logt['completion'] + logt['prompt']:,}")
             line("requests", f"{logt['requests']:,}")
         if life:
-            line("since restart", f"{life.get('completion_tokens_total', 0):,}")
+            line("since restart",
+                 f"{int(num(life.get('completion_tokens_total'))):,}")
 
     print(f"\n{BOLD}Clients{RESET}")
     if s["clients"]:

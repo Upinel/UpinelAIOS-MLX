@@ -98,8 +98,9 @@ class Report:
     def __init__(self):
         self.passed = 0
         self.failed = 0
+        self.transport = 0      # could not reach the server at all
 
-    def check(self, label, ok, detail=""):
+    def check(self, label, ok, detail="", transport=False):
         mark = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
         print(f"  [{mark}] {label}")
         if detail:
@@ -108,6 +109,8 @@ class Report:
             self.passed += 1
         else:
             self.failed += 1
+            if transport:
+                self.transport += 1
         return ok
 
 
@@ -176,7 +179,10 @@ def main():
                          (body.get("choices") or [{}])[0].get("finish_reason") == "tool_calls",
                          f"got {(body.get('choices') or [{}])[0].get('finish_reason')!r}")
     except Exception as e:                                     # noqa: BLE001
-        report.check("non-streaming tool call", False, f"{type(e).__name__}: {e}")
+        report.check("non-streaming tool call", False,
+                     f"{type(e).__name__}: {e}",
+                     transport=isinstance(e, (urllib.error.URLError, OSError,
+                                              TimeoutError)))
 
     # ── 3. streaming tool call (what agents actually use) ────────────────────
     print("\n  3. OpenAI streaming tool call  (the path real agents use)")
@@ -201,7 +207,9 @@ def main():
                      f"got {finish!r}")
         report.check("deltas carry an index (required by OpenAI clients)", saw_index)
     except Exception as e:                                     # noqa: BLE001
-        report.check("streaming tool call", False, f"{type(e).__name__}: {e}")
+        report.check("streaming tool call", False, f"{type(e).__name__}: {e}",
+                     transport=isinstance(e, (urllib.error.URLError, OSError,
+                                              TimeoutError)))
 
     # ── 4. multi-turn: feed the result back ──────────────────────────────────
     print("\n  4. Multi-turn tool result round-trip")
@@ -225,7 +233,9 @@ def main():
         report.check("model accepts a tool result and answers",
                      bool(text.strip()), text.strip()[:160])
     except Exception as e:                                     # noqa: BLE001
-        report.check("tool result round-trip", False, f"{type(e).__name__}: {e}")
+        report.check("tool result round-trip", False, f"{type(e).__name__}: {e}",
+                     transport=isinstance(e, (urllib.error.URLError, OSError,
+                                              TimeoutError)))
 
     # ── 5. Anthropic shape, used by Claude Code ──────────────────────────────
     print("\n  5. Anthropic /v1/messages tool_use  (Claude Code path)")
@@ -272,6 +282,19 @@ def main():
         return 0
 
     print(f"  {RED}{report.failed} check(s) failed{RESET} ({report.passed} passed).")
+
+    if report.transport >= report.failed and report.transport > 0:
+        # Nothing structural: the requests never landed.
+        print(f"\n  {YELLOW}These look like connection failures, not model failures.{RESET}")
+        print("  The endpoint answered /v1/models but then stopped responding,")
+        print("  which usually means it is still starting up or was restarting")
+        print("  mid-run. A freshly started server spends 30-90s loading weights")
+        print("  and is not ready until /health returns ok.")
+        print("\n    ./status.sh --once     # check the server state")
+        print("    tail -f run/server.log # watch it come up")
+        print("\n  Re-run this diagnostic once it reports 'serving'.\n")
+        return 1
+
     print(f"\n  {YELLOW}If the failing checks are about JSON or finish_reason:{RESET}")
     print("    the reply is probably being truncated. Raise max_tokens, or set")
     print("    THINKING=\"off\" in env.conf — thinking tokens count against the")

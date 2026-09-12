@@ -43,6 +43,7 @@ print(json.dumps({
     "api_key_file": "${API_KEY_FILE}",
     "pid_file": "${PID_FILE}",
     "log_file": "${LOG_FILE}",
+    "error_log": "$RUN_DIR/dashboard.err",
     "model_dir": "${MODEL_DIR}",
     "model": "${MODEL}",
     "served_name": "${SERVED_MODEL_NAME}",

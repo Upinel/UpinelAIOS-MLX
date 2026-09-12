@@ -81,6 +81,30 @@ not `kill -9`. A process holding a large wired MLX allocation that is
 hard-killed may leak those pages at the kernel level until the machine reboots.
 `./stop.sh --force` exists, but it is a last resort.
 
+## The dashboard shows "display error"
+
+The live dashboard reports a rendering fault instead of exiting, and writes the
+traceback to `run/dashboard.err`.
+
+This is deliberate. A fault in one panel used to kill the process and dump a
+traceback over the frame, which is a bad way to learn about a bug in a tool you
+are using to watch a server. Now the frame degrades: the header, the fault
+count, and the system numbers that were already collected stay on screen, and
+the rest is logged.
+
+The usual cause is telemetry that MTPLX has not measured yet. It publishes
+`null` for those fields — most often `decode_tok_s` while a long prompt is still
+prefilling — and a `null` reaching a format specifier raises `TypeError`. The
+known cases are fixed; anything new lands in `run/dashboard.err`.
+
+```bash
+cat run/dashboard.err        # the traceback, with the frame number
+```
+
+Include that file if you report it. Restarting `./status.sh` clears the fault;
+no other part of UpinelAIOS is affected, because the dashboard is read-only and
+never talks to the model directly.
+
 ## The server will not start
 
 ```bash
