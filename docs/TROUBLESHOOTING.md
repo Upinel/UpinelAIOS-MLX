@@ -18,8 +18,10 @@ Two panels are the fastest way to spot trouble:
   up immediately as a descending line, and the min/avg/max figures tell you
   whether it is a blip or a trend.
 
-The **CLIENTS** panel shows who is connected. If something you do not recognise
-is using your endpoint, that is where you will see it.
+The **CLIENTS** panel shows who is connected, by peer address and process name.
+If something you do not recognise is using your endpoint, that is where you will
+see it. On a short terminal the panel is dropped and its contents move into the
+footer line — resize the window taller to get the full table back.
 
 `run/server.log` is the whole story. Every failure below was diagnosed from it.
 

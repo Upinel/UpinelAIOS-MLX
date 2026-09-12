@@ -38,7 +38,11 @@ from collections import deque
 
 # ── terminal ─────────────────────────────────────────────────────────────────
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
-ALT_SCREEN = sys.stdout.isatty()
+# True when we can draw in place with cursor control. We deliberately do
+# NOT switch to the alternate screen buffer: the frame is sized to fit the
+# window exactly, so leaving the previous shell output in scrollback is a
+# feature, not pollution.
+TTY_MODE = sys.stdout.isatty()
 
 
 def c(code):
@@ -101,7 +105,15 @@ class CPUSampler:
             self.ok = True
         except Exception:
             return
+        # Mach reports cumulative ticks, so the first delta is always zero and
+        # a single-sample reading shows "--". Take a short baseline now so even
+        # the first rendered frame carries a real percentage.
         self.prev = self._read()
+        if self.prev is not None:
+            time.sleep(0.15)
+            second = self._read()
+            if second is not None:
+                self.prev = second
 
     def _read(self):
         buf = (ctypes.c_uint32 * (self.CPU_STATE_MAX))()
@@ -337,31 +349,59 @@ class ServerSampler:
         TCP peers currently connected to the server port.
 
         MTPLX does not record the client address on a request, so this is read
-        from the socket table instead: it answers "who is connected", not
-        "which request came from where".
+        from the socket table: it answers "who is connected", not "which
+        request came from where".
+
+        lsof prints one row per socket endpoint, so a single connection appears
+        twice - once owned by the server and once by the client. We keep only
+        the client side and label it, so the panel reports who is talking to us
+        rather than naming our own server process back at the user.
         """
         if not self.port:
             return []
-        out = run(["lsof", "-nP", "-iTCP:%d" % int(self.port),
-                   "-sTCP:ESTABLISHED"], timeout=5)
+        port = int(self.port)
+        out = run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:ESTABLISHED"],
+                  timeout=5)
+        if not out:
+            return []
+
+        server_pid = self.server_pid()
         peers = {}
-        marker = ":%d->" % int(self.port)
         for line in out.splitlines()[1:]:
             parts = line.split()
             if len(parts) < 9:
                 continue
-            name = parts[8]
-            if marker not in name:
-                continue                      # server side of the pair
-            peer = name.split("->", 1)[1]
-            ip = peer.rsplit(":", 1)[0]
-            if not ip:
+            try:
+                pid = int(parts[1])
+            except (ValueError, IndexError):
                 continue
-            entry = peers.setdefault(ip, {"conns": 0, "procs": set()})
+            name = parts[8]
+            # Skip the server's own end of the socket; keep the remote end.
+            if pid == server_pid:
+                continue
+            if "->" not in name:
+                continue
+            local, remote = name.split("->", 1)
+            peer_ip = remote.rsplit(":", 1)[0]
+            if not peer_ip:
+                continue
+            entry = peers.setdefault(peer_ip, {"conns": 0, "procs": set()})
             entry["conns"] += 1
-            entry["procs"].add(parts[0])
-        return [{"ip": ip, "conns": v["conns"],
-                 "procs": sorted(v["procs"])} for ip, v in sorted(peers.items())]
+            # lsof escapes spaces and other characters in COMMAND as \x20 etc.
+            entry["procs"].add(re.sub(r"\\x([0-9a-fA-F]{2})",
+                                      lambda m: chr(int(m.group(1), 16)),
+                                      parts[0]))
+
+        result = []
+        for ip, entry in sorted(peers.items()):
+            loopback = ip.startswith("127.") or ip == "::1"
+            result.append({
+                "ip": ip,
+                "conns": entry["conns"],
+                "procs": sorted(entry["procs"]),
+                "local": loopback,
+            })
+        return result
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -455,13 +495,17 @@ def human_gb(gb):
     return f"{gb:.2f}G"
 
 
-def two_col(left_lines, right_lines, total_width):
-    """Lay two lists of strings side by side."""
+def col_widths(left_lines, right_lines, total_width):
+    """Left/right column widths for a two-column block."""
     gutter = 3
     lw = max((len(strip_ansi(s)) for s in left_lines), default=0) + gutter
-    # Cap the left column so a long line cannot push the right one off-screen.
     lw = max(24, min(lw, (total_width * 62) // 100))
-    rw = total_width - lw
+    return lw, total_width - lw
+
+
+def two_col(left_lines, right_lines, total_width):
+    """Lay two lists of strings side by side."""
+    lw, rw = col_widths(left_lines, right_lines, total_width)
     rows = max(len(left_lines), len(right_lines))
     out = []
     for i in range(rows):
@@ -519,6 +563,12 @@ class Dashboard:
         self.last_good = 0.0
         self._log_cache = {}
         self.log_totals = None
+        # Cached probes. lsof and pmset are not free, and neither the client
+        # list nor the thermal state changes meaningfully at 1 Hz - spawning
+        # them every second just churns the process table for no new data.
+        self._clients_cache = (0, [])
+        self._thermal_cache = (0, "unknown")
+        self._frame = 0
 
     # ── one sample ───────────────────────────────────────────────────────────
     def collect(self):
@@ -570,7 +620,10 @@ class Dashboard:
                                  if s["ram_total_gb"] else 0)
 
         s["swap"] = swap_usage()
-        s["thermal"] = thermal_state()
+        # Thermal state moves on the scale of tens of seconds.
+        if self._frame % 10 == 0:
+            self._thermal_cache = (self._frame, thermal_state())
+        s["thermal"] = self._thermal_cache[1]
 
         pid = self.server.server_pid()
         s["proc"] = proc_stats(pid) if pid else None
@@ -579,7 +632,11 @@ class Dashboard:
         snap = self.server.snapshot()
         s["snap"] = snap
         s["server_up"] = snap is not None
-        s["clients"] = self.server.clients() if snap is not None else []
+        # The connection list is worth refreshing often enough to notice a new
+        # client, but not every frame.
+        if snap is not None and self._frame % 3 == 0:
+            self._clients_cache = (self._frame, self.server.clients())
+        s["clients"] = self._clients_cache[1] if snap is not None else []
         s["log_totals"] = self.server.log_totals(self.cfg.get("log_file"),
                                                  self._log_cache)
         s["in_flight"] = []
@@ -619,18 +676,16 @@ class Dashboard:
         return s
 
     # ── render ───────────────────────────────────────────────────────────────
-    def render(self, s):
-        width, height = term_size()
-        width = max(64, min(width, 200))
-        self._width = width
-        L = []
+    # The layout is built as ordered blocks and emitted only while they fit the
+    # terminal. A dashboard that renders more rows than the window has scrolls
+    # its own header off the top, which is worse than showing fewer panels.
+    def _block_header(self, s, width):
         cfg = self.cfg
-
         up = time.time() - self.t0
         hh, rem = divmod(int(up), 3600)
         mm, ss = divmod(rem, 60)
 
-        # ── header ──
+        L = []
         title = f"{BOLD}UpinelAIOS{RESET}"
         status = (f"{GREEN}\u25cf serving{RESET}" if s["server_up"]
                   else f"{RED}\u25cf not running{RESET}")
@@ -640,28 +695,22 @@ class Dashboard:
         L.append(f"{title}{' ' * pad}{status}  {DIM}{clock}{RESET}")
         L.append(f"{DIM}  Upinel's One-Click AI Agent Server OS for Mac{RESET}")
         L.append(DIM + "\u2500" * width + RESET)
-        # Model identity, in full and on its own line: the repo id IS the model
-        # name, and truncating it hides which weights are actually loaded.
+
+        key = cfg.get("api_key") or "(none - loopback only)"
         L.append(f"  {DIM}model {RESET}{BOLD}{cfg['model_repo']}{RESET}")
-        if cfg.get("model") and cfg["model"] != cfg["model_repo"]:
-            L.append(f"  {DIM}      (env.conf MODEL={cfg['model']} -> "
-                     f"{cfg['model_repo']}){RESET}")
         L.append(f"  {DIM}served as {RESET}{CYAN}{cfg.get('served_name','')}{RESET}"
                  f"{DIM}   ctx {cfg.get('context','?')}   KV {cfg.get('kv','?')}"
-                 f"   MTP d{cfg.get('depth','?')}   profile {cfg.get('profile','?')}{RESET}")
-        bits = [f"think {cfg.get('thinking','?')}",
-                f"history {cfg.get('preserve_thinking','?')}",
-                f"{cfg.get('batching','?')} batching",
-                f"cap {cfg.get('memory_limit','?')}G"]
-        L.append("  " + DIM + " \u00b7 ".join(bits) + RESET)
-        L.append(f"  {CYAN}{cfg.get('lan_url', cfg['base'])}{RESET}")
-        # The key is printed whole, on its own line. It is a LAN shared secret
-        # the user has to copy into clients, so eliding it helps nobody.
-        key = cfg.get("api_key") or "(none - loopback only)"
-        L.append(f"  {DIM}api key {RESET}{YELLOW}{key}{RESET}")
+                 f"   MTP d{cfg.get('depth','?')}   {cfg.get('profile','?')}{RESET}")
+        L.append(f"  {DIM}api key {RESET}{YELLOW}{key}{RESET}"
+                 f"{DIM}   {cfg.get('lan_url', cfg['base'])}{RESET}")
         L.append("")
+        return L
 
-        # ── host vs endpoint-process memory ──
+    def _header_lines(self):
+        """Header line count, used to size everything else."""
+        return 7
+
+    def _block_host(self, s, width):
         def gauge(label, pct, text, barw=16):
             if pct is None:
                 return (f"  {BOLD}{label:<5}{RESET} "
@@ -680,8 +729,8 @@ class Dashboard:
         left.append(gauge("GPU", s["gpu"],
                           f"{s['gpu']:.0f}%" if s["gpu"] is not None else "--"))
         if s.get("ane") is not None:
-            ane_bar = bar(min(100, s["ane"] / 20), 16)
-            left.append(f"  {BOLD}ANE  {RESET} {GREEN}{ane_bar}{RESET} {s['ane']:>5.0f}mW")
+            left.append(f"  {BOLD}ANE  {RESET} {GREEN}{bar(min(100, s['ane'] / 20), 16)}"
+                        f"{RESET} {s['ane']:>5.0f}mW")
         else:
             left.append(f"  {BOLD}ANE  {RESET} {DIM}{'\u2591' * 16}   n/a{RESET}")
         left.append(gauge("RAM", ram_pct, human_gb(s["ram_used_gb"])))
@@ -693,9 +742,9 @@ class Dashboard:
         detail.append(s["thermal"])
         if s.get("memory_pressure_level") is not None:
             detail.append(f"pressure L{s['memory_pressure_level']}")
+        detail.append("gpu=system")
         left.append(f"  {DIM}{'  '.join(detail)}{RESET}")
 
-        # The endpoint's own MLX allocation, straight from MTPLX's telemetry.
         mem = s.get("srv_mem") or {}
         right = [f"  {BOLD}ENDPOINT PROCESS{RESET}"]
         if mem and mem.get("ok"):
@@ -712,130 +761,215 @@ class Dashboard:
                 right.append(f"  {label:<13}{human_gb(v):>7} "
                              f"{DIM}{bar(100 * v / span, 10)}{RESET}")
             right.append(f"  {'\u2500' * 13}{'\u2500' * 18}")
-            pk = gb("peak_memory_bytes")
             right.append(f"  {'total':<13}{human_gb(total_gb):>7}  "
-                         f"{DIM}peak {human_gb(pk)}{RESET}")
+                         f"{DIM}peak {human_gb(gb('peak_memory_bytes'))}{RESET}")
             right.append(f"  {'host free':<13}{human_gb(s['ram_free_gb']):>7}  "
                          f"{DIM}(+{human_gb(s['ram_cached_gb'])} cached){RESET}")
         else:
             right.append(f"  {DIM}no telemetry{RESET}")
-        L += two_col(left, right, width)
-        L.append("")
+        return two_col(left, right, width) + [""]
 
-        # ── concurrent activity + clients ──
+    def _block_activity(self, s, width, compact=False):
         sched = s.get("scheduler") or {}
         act = [f"  {BOLD}CONCURRENT ACTIVITY{RESET}"]
-        nfly = len(s["in_flight"])
-        act.append(f"  in-flight {YELLOW}{nfly}{RESET}"
-                   f"   sessions {s.get('sessions_n', 0)}"
-                   f"   lane {sched.get('active_lane') or '-'}"
-                   f"   policy {sched.get('scheduler_policy') or '-'}")
-        for req in s["in_flight"][:3]:
-            lp = req.get("last_progress") or {}
-            rid = (req.get("request_id") or "")[:14]
-            age = req.get("age_s") or 0
-            toks = lp.get("completion_tokens")
-            tps = lp.get("decode_tok_s")
-            sess = (req.get("session_id") or "")[:12]
-            line1 = (f"  {CYAN}{rid}\u2026{RESET} {age:>5.0f}s "
-                     f"{DIM}{sess}{RESET} {req.get('prompt_tokens', 0)} ctx")
-            if toks is not None:
-                line1 += f"  {GREEN}{toks} tok @ {tps:.1f} t/s{RESET}"
-            act.append(line1)
-            prev = (req.get("prompt_preview") or "").replace("\n", " ")
-            if prev:
-                act.append(f"    {DIM}\u201c{truncate(prev, width // 2 - 6)}{RESET}")
-        if not s["in_flight"] and s["server_up"]:
+        if compact:
+            now = s.get("live_tps")
+            act.append(f"  in-flight {YELLOW}{len(s['in_flight'])}{RESET}"
+                       f"  sessions {s.get('sessions_n', 0)}"
+                       f"  {sched.get('active_lane') or '-'}"
+                       + (f"  {GREEN}{now:.1f} t/s{RESET}" if now else ""))
+        else:
+            act.append(f"  in-flight {YELLOW}{len(s['in_flight'])}{RESET}"
+                       f"   sessions {s.get('sessions_n', 0)}"
+                       f"   lane {sched.get('active_lane') or '-'}"
+                       f"   policy {sched.get('scheduler_policy') or '-'}")
+            for req in s["in_flight"][:2]:
+                lp = req.get("last_progress") or {}
+                rid = (req.get("request_id") or "")[:14]
+                act.append(f"  {CYAN}{rid}\u2026{RESET} {(req.get('age_s') or 0):>5.0f}s"
+                           f" {DIM}{(req.get('session_id') or '')[:12]}{RESET}"
+                           f" {req.get('prompt_tokens', 0)} ctx"
+                           + (f"  {GREEN}{lp.get('completion_tokens')} tok"
+                              f" @ {lp.get('decode_tok_s', 0):.1f} t/s{RESET}"
+                              if lp.get("completion_tokens") is not None else ""))
+                prev = (req.get("prompt_preview") or "").replace("\n", " ")
+                if prev:
+                    act.append(f"    {DIM}\u201c{truncate(prev, width // 2 - 8)}{RESET}")
+        if not s["in_flight"] and s["server_up"] and not compact:
             act.append(f"  {DIM}idle{RESET}")
 
-        cli = [f"  {BOLD}CLIENTS{RESET}  {DIM}connected TCP peers{RESET}"]
+        cli = [f"  {BOLD}CLIENTS{RESET}  {DIM}connected peers{RESET}"]
         if s["clients"]:
-            for cl in s["clients"][:5]:
-                tag = " (this Mac)" if cl["ip"].startswith("127.") else ""
-                cli.append(f"  {cl['ip']:<16} {cl['conns']} conn"
-                           f"{DIM}  {','.join(cl['procs'])[:18]}{tag}{RESET}")
+            for cl in s["clients"][:4]:
+                where = "this Mac" if cl.get("local") else cl["ip"]
+                who = ",".join(cl["procs"])[:16] or "?"
+                cli.append(f"  {where:<16} {cl['conns']} conn  {DIM}{who}{RESET}")
         elif s["server_up"]:
             cli.append(f"  {DIM}none connected{RESET}")
         else:
             cli.append(f"  {DIM}-{RESET}")
-        L += two_col(act, cli, width)
-        L.append("")
+        return two_col(act, cli, width) + [""]
 
-        # ── token rate chart + lifetime counters ──
+    def _block_rate(self, s, width, chart_rows_n, max_rows):
+        """
+        Live token-rate chart beside the cumulative counters.
+
+        Both columns are sized to max_rows: the counter column is usually taller
+        than the chart, and letting it dictate the block height is what pushed
+        the whole panel out of a 24-row terminal.
+        """
         hist = [h.get("tok_s", 0.0) for h in (s.get("live_history") or [])
                 if isinstance(h, dict)]
-        roll = s.get("rolling") or {}
-        chart_w = max(24, width - 34)
-        chart_rows, axis_lo, axis_hi = line_chart(hist, chart_w, height=5)
+        lw, _ = col_widths(
+            [f"  {BOLD}TOKEN RATE{RESET}  {DIM}live{RESET}"
+             f"  {DIM}min 00.0  avg 00.0  max 00.0{RESET}"], [], width)
+        chart_w = max(12, lw - 9)
+        # Budget: header + chart + scale line + trailing blank = chart_h + 3.
+        chart_h = max(1, min(chart_rows_n, max_rows - 3))
+        rows, axis_lo, axis_hi = line_chart(hist, chart_w, height=chart_h)
 
         life = s.get("lifetime") or {}
         logt = s.get("log_totals") or {}
-        counters = [f"  {BOLD}TOKENS GENERATED{RESET}  {DIM}all logged{RESET}"]
+        counters = [f"  {BOLD}TOKENS GENERATED{RESET}"]
+        detail = []
         if logt:
-            counters.append(f"  {'output':<12}{logt['completion']:>13,}")
-            counters.append(f"  {'input':<12}{logt['prompt']:>13,}")
-            counters.append(f"  {'total':<12}"
-                            f"{(logt['completion'] + logt['prompt']):>13,}")
-            counters.append(f"  {'requests':<12}{logt['requests']:>13,}")
-        else:
-            counters.append(f"  {DIM}no log yet{RESET}")
+            detail.append(("output", f"{logt['completion']:,}"))
+            detail.append(("input", f"{logt['prompt']:,}"))
+            detail.append(("total", f"{logt['completion'] + logt['prompt']:,}"))
+            detail.append(("requests", f"{logt['requests']:,}"))
         if life:
-            # Telemetry counters reset with the process, so they are labelled
-            # as such rather than presented as an all-time figure.
-            counters.append(f"  {DIM}{'\u2500' * 12}{'\u2500' * 13}{RESET}")
-            counters.append(f"  {DIM}{'since restart':<12}"
-                            f"{life.get('completion_tokens_total', 0):>13,}{RESET}")
-            if life.get("cancelled_total"):
-                counters.append(f"  {DIM}{'cancelled':<12}"
-                                f"{life['cancelled_total']:>13,}{RESET}")
+            detail.append(("restart", f"{life.get('completion_tokens_total', 0):,}"))
+        # Always keep at least 'output'; add rows only while they fit. The cap
+        # leaves room for the blank row that separates this block from the next.
+        counter_cap = max(1, max_rows - 1)
+        for label, value in detail:
+            if len(counters) < counter_cap:
+                counters.append(f"  {label:<9}{value:>12}")
 
         now = s.get("live_tps")
-        head = f"  {BOLD}TOKEN RATE{RESET}  {DIM}live, last {len(hist)} samples{RESET}"
+        head = f"  {BOLD}TOKEN RATE{RESET}  {DIM}live{RESET}"
         if hist:
             head += (f"  {DIM}min {min(hist):.1f}  avg {sum(hist)/len(hist):.1f}"
                      f"  max {max(hist):.1f}{RESET}")
-        rate_lines = [head]
-        for i, row in enumerate(chart_rows):
+        lines = [head]
+        for i, row in enumerate(rows):
             label = f"{axis_hi:>6.1f} " if i == 0 else " " * 7
-            rate_lines.append(f"  {DIM}{label}{RESET}{GREEN}{row}{RESET}")
-        # "now" is a live sample; without history there is nothing live to
-        # report, so say so rather than echoing the last completed request.
+            lines.append(f"  {DIM}{label}{RESET}{GREEN}{row}{RESET}")
         if hist:
-            foot = f"{axis_lo:>6.1f} "
-            rate_lines.append(f"  {DIM}{foot}{RESET}" +
-                              (f"{CYAN}now {now:.1f} t/s{RESET}" if now
-                               else f"{DIM}idle{RESET}"))
+            lines.append(f"  {DIM}{axis_lo:>6.1f} {RESET}"
+                         + (f"{CYAN}now {now:.1f} t/s{RESET}" if now
+                            else f"{DIM}idle{RESET}"))
         else:
-            rate_lines.append(f"  {DIM}{' ' * 7}waiting for traffic{RESET}")
+            lines.append(f"  {DIM}{' ' * 7}waiting for traffic{RESET}")
+        return two_col(lines, counters, width) + [""]
 
-        L += two_col(rate_lines, counters, width)
-        L.append("")
+    def _block_rate_summary(self, s):
+        """One-line token panel for terminals too short for the chart."""
+        logt = s.get("log_totals") or {}
+        now = s.get("live_tps")
+        bits = [f"  {BOLD}TOKENS{RESET}"]
+        if now:
+            bits.append(f"{GREEN}{now:.1f} t/s{RESET}")
+        if logt:
+            bits.append(f"{DIM}out {logt['completion']:,}"
+                        f"   in {logt['prompt']:,}"
+                        f"   {logt['requests']:,} reqs{RESET}")
+        return [" ".join(bits), ""]
 
-        # ── history sparklines ──
+    def _block_spark(self, width):
         sw = max(20, width - 16)
-        L.append(f"  {BOLD}cpu {RESET}{sparkline(self.hist_cpu, sw)}")
-        L.append(f"  {BOLD}gpu {RESET}{sparkline(self.hist_gpu, sw)}")
+        return [f"  {BOLD}cpu {RESET}{sparkline(self.hist_cpu, sw)}",
+                f"  {BOLD}gpu {RESET}{sparkline(self.hist_gpu, sw)}",
+                ""]
+
+    def render(self, s):
+        width, height = term_size()
+        width = max(60, min(width, 200))
+        L = []
+
+        header = self._block_header(s, width)
+        host = self._block_host(s, width)
+        footer = None   # built after the blocks are placed
+
+        # Essential blocks first, then optional ones in priority order, each
+        # admitted only if the remaining rows can hold it.
+        L.extend(header)
+        L.extend(host)
+
+        # The token rate is the panel people watch, so it outranks activity and
+        # gets whatever rows are left after the essential blocks.
+        # Reserve two rows for the footer block (separator + footer line).
+        RESERVED = 2
+        remaining = height - len(L) - RESERVED
+        rate = None
+        if remaining >= 4:
+            for chart_rows_n in (5, 4, 3, 2, 1):
+                candidate = self._block_rate(s, width, chart_rows_n, remaining)
+                if len(candidate) <= remaining:
+                    rate = candidate
+                    break
+                # Last resort: a one-line summary so the panel still appears.
+            if rate is None:
+                summary = self._block_rate_summary(s)
+                if len(summary) <= remaining:
+                    rate = summary
+        if rate:
+            L.extend(rate)
+            remaining -= len(rate)
+
+        activity_shown = False
+        for compact in (False, True):
+            if remaining < 3:
+                break
+            act = self._block_activity(s, width, compact=compact)
+            if len(act) <= remaining:
+                L.extend(act)
+                remaining -= len(act)
+                activity_shown = True
+                break
+
+        if remaining >= len(self._block_spark(width)):
+            L.extend(self._block_spark(width))
+
+        # One blank row between the last panel and the footer, no more.
+        while L and not strip_ansi(L[-1]).strip():
+            L.pop()
         L.append("")
-        L.append(f"  {DIM}refresh {self.args.interval}s \u00b7 Ctrl-C to exit"
-                 f"{'' if self.power and self.power.available else ' \u00b7 --power for ANE'}"
-                 f"{RESET}")
+
+        hint = (f"refresh {self.args.interval}s \u00b7 Ctrl-C to exit"
+                + ("" if self.power and self.power.available else " \u00b7 --power for ANE"))
+        # If the activity panel did not fit, its essentials ride along in the
+        # footer rather than vanishing: who is connected and how much is running.
+        if not activity_shown and s["server_up"]:
+            bits = [f"{len(s['in_flight'])} in-flight",
+                    f"{s.get('sessions_n', 0)} sessions"]
+            if s["clients"]:
+                who = ", ".join(
+                    (c["ip"] if not c.get("local") else "this Mac")
+                    + (f" x{c['conns']}" if c["conns"] > 1 else "")
+                    for c in s["clients"][:2])
+                bits.append(who)
+            hint = " \u00b7 ".join(bits) + "   " + f"{DIM}{hint}{RESET}"
+        footer = [f"  {DIM}\u2500\u2500{RESET} {hint}"]
+
+        while len(L) < height - len(footer) - 1:
+            L.append("")
+        L.extend(footer)
 
         # Final safety pass: clamp every line to the terminal width. The model
-        # id and the API key are intentionally printed in full, and on a narrow
-        # terminal an unclamped line would wrap and corrupt every row below it.
+        # id and the API key are printed in full, and an unclamped line would
+        # wrap and corrupt every row below it.
         L = [truncate(line, width) if len(strip_ansi(line)) > width else line
-             for line in L]
+             for line in L][:height - 1]
 
-        if not ALT_SCREEN:
+        if not TTY_MODE:
             body = "\n".join(strip_ansi(x) if not USE_COLOR else x for x in L)
             return body + "\n" + "\u2500" * min(width, 78) + "\n"
 
-        while len(L) < height - 1:
-            L.append("")
-        return HOME + "\n".join(x + CLR_EOL for x in L[:height - 1]) + CLR_EOS
+        return HOME + "\n".join(x + CLR_EOL for x in L) + CLR_EOS
 
     def run(self):
-        if ALT_SCREEN:
+        if TTY_MODE:
             sys.stdout.write(HIDE_CURSOR)
             sys.stdout.flush()
         try:
@@ -852,7 +986,7 @@ class Dashboard:
         except KeyboardInterrupt:
             pass
         finally:
-            if ALT_SCREEN:
+            if TTY_MODE:
                 sys.stdout.write(SHOW_CURSOR + "\n")
                 sys.stdout.flush()
 

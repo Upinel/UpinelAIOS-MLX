@@ -125,13 +125,23 @@ because both are things you copy into a client.
 machine-readable snapshot, `--key` prints only the API key (handy for
 `export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
 
+The layout adapts to your window. Panels are admitted in priority order —
+identity, then host and process memory, then the token rate, then concurrent
+activity — and anything that will not fit is dropped rather than drawn past the
+bottom of the screen. If the activity panel is dropped, its essentials (who is
+connected, how much is running) move into the footer line, so nothing important
+disappears silently. On a 24-row terminal you get the header, the host and
+process panels, and the token chart; on an 80-row terminal you get everything.
+
 ### Two limits, stated rather than hidden
 
 **Client IPs come from the socket table, not the request.** MTPLX does not
 record which request came from which peer, so `CLIENTS` answers "who is
 connected to this port right now", not "who sent this particular prompt". It is
 still the right tool for "is anything else on my LAN using my Mac?" — which is
-usually the actual question.
+usually the actual question. Each row names the *peer* process, not the server's
+own, so a local agent shows as `this Mac  DSH De` rather than the runtime's
+process name.
 
 **The ANE is shown as `n/a`.** Apple exposes the Neural Engine only through
 `powermetrics`, which needs root — and MLX is GPU-only, so it genuinely is idle
