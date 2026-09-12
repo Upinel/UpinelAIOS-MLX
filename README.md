@@ -219,6 +219,35 @@ the OpenAI Python SDK.
 The full API key and the model identity are printed in the header, untruncated,
 because both are things you copy into a client.
 
+### Keyboard control
+
+While the dashboard is running:
+
+| key | action |
+|---|---|
+| `t` | cycle the thinking level |
+| `m` | cycle the downloaded models |
+| `Enter` | apply the pending change now |
+| `Esc` | cancel the pending change |
+| `q` | quit |
+
+A toggle does **not** apply on the keystroke that chose it. It arms a
+**2-second countdown** and applies when the countdown expires, so pressing the
+key again moves to the next option without committing to the one you just
+passed. The footer shows exactly what is about to happen:
+
+```
+── thinking: low → medium   applying in 1.9s   [same key] next  [Enter] now  [Esc] cancel
+```
+
+Thinking changes are applied live — the model stays loaded, so it is instant and
+safe mid-generation. Model switches persist to `env.conf` and restart the
+server, which takes 30–90s to load the new weights; the dashboard survives the
+restart and shows `not running` until it is back.
+
+`--no-keys` turns the toggles off for a passive display, and the bindings are
+silently disabled when stdout is not a terminal.
+
 `--once` prints a plain summary for logs and scripts, `--json` a
 machine-readable snapshot, `--key` prints only the API key (handy for
 `export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.

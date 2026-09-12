@@ -7,6 +7,14 @@
 #   ./status.sh --json         machine-readable snapshot
 #   ./status.sh --key          print only the API key, for scripting
 #   ./status.sh --thinking off|minimal|low|medium|high   change thinking LIVE
+#   ./status.sh --no-keys      display only; disable the t/m key toggles
+#
+# While it runs, these keys work:
+#   t   cycle the thinking level        m   cycle the downloaded models
+#   Enter apply now   Esc cancel        q   quit
+#
+# A toggle arms a 2-second countdown and applies when it expires, so pressing
+# the key again moves to the next option without committing to the last one.
 #   ./status.sh --thinking     show the current thinking setting
 #   ./status.sh --interval 2   slower refresh
 #   ./status.sh --power        add real ANE/GPU power (needs passwordless sudo)
@@ -93,6 +101,9 @@ print(json.dumps({
     "pid_file": "${PID_FILE}",
     "log_file": "${LOG_FILE}",
     "error_log": "$RUN_DIR/dashboard.err",
+    "models_dir": "${MODELS_DIR}",
+    "repo_dir": "${REPO_DIR}",
+    "env_file": "${ENV_FILE}",
     "model_dir": "${MODEL_DIR}",
     "model": "${MODEL}",
     "served_name": "${SERVED_MODEL_NAME}",

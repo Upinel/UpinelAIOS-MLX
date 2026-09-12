@@ -221,6 +221,11 @@ early stop with `THINKING_NOVELTY_CLOSE=0`.
 ./status.sh --thinking minimal
 ```
 
+Or from inside the dashboard: press **`t`** to cycle the level, **`m`** to cycle
+the downloaded models, **`Enter`** to apply immediately, **`Esc`** to cancel.
+Each toggle arms a 2-second countdown before it applies, so repeated presses
+cycle through the options and the last one you stop on is the one that sticks.
+
 This uses MTPLX's live settings endpoint. The model stays loaded — only the
 decode policy changes — so it is instant and does not disturb a call in flight.
 It is **not** persisted: set `THINKING` in `env.conf` to survive a restart.

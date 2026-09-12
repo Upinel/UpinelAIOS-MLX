@@ -70,6 +70,123 @@ def term_size():
     return sz.columns, sz.lines
 
 
+# ── keyboard input ───────────────────────────────────────────────────────────
+class Keys:
+    """
+    Single-keypress input in cbreak mode.
+
+    cbreak rather than raw: it turns off line buffering so a key arrives
+    immediately, while leaving ISIG alone so Ctrl-C still raises SIGINT and the
+    dashboard can shut down cleanly. Terminal attributes are always restored,
+    including on an exception, because leaving a shell in cbreak mode is a
+    genuinely unpleasant state to hand back to someone.
+    """
+
+    def __init__(self, enabled):
+        self.enabled = bool(enabled) and sys.stdin.isatty()
+        self._fd = None
+        self._saved = None
+
+    def __enter__(self):
+        if not self.enabled:
+            return self
+        try:
+            import termios
+            import tty
+            self._fd = sys.stdin.fileno()
+            self._saved = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+        except Exception:
+            self.enabled = False
+        return self
+
+    def __exit__(self, *exc):
+        self.restore()
+        return False
+
+    def restore(self):
+        if self._fd is None or self._saved is None:
+            return
+        try:
+            import termios
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)
+        except Exception:
+            pass
+        self._fd = None
+        self._saved = None
+
+    def poll(self, timeout):
+        """Wait up to `timeout` seconds for one key. Returns str or None."""
+        if not self.enabled:
+            time.sleep(max(0.0, timeout))
+            return None
+        try:
+            import select
+            ready, _, _ = select.select([sys.stdin], [], [], max(0.0, timeout))
+        except (OSError, ValueError):
+            return None
+        if not ready:
+            return None
+        try:
+            ch = sys.stdin.read(1)
+        except (OSError, ValueError):
+            return None
+        if ch == "\x1b":
+            # Report Escape immediately rather than trying to classify the
+            # sequence. Waiting to see whether more bytes follow an ESC is a
+            # coin flip against terminal buffering, and getting it wrong means
+            # the cancel key silently does nothing - which is how an accidental
+            # model switch got committed during testing. Drain anything already
+            # queued (an arrow key's trailing bytes) and treat it as Escape:
+            # cancel is only meaningful while a toggle is pending, so a stray
+            # arrow key cancelling a pending action is harmless.
+            try:
+                import select
+                while select.select([sys.stdin], [], [], 0.005)[0]:
+                    if not sys.stdin.read(1):
+                        break
+            except (OSError, ValueError):
+                pass
+            return "ESC"
+        return ch
+
+
+# ── pending-action state ─────────────────────────────────────────────────────
+# A toggle does not apply on the keystroke that chose it. It arms a countdown
+# and applies when the countdown expires, so pressing the key again cycles on
+# without committing, and Enter commits early. That is what makes "press t until
+# you see the level you want" work.
+SETTLE_SECONDS = 2.0
+
+
+class Pending:
+    def __init__(self):
+        self.kind = None          # "thinking" | "model"
+        self.value = None         # level, or repo id
+        self.deadline = 0.0
+        self.from_value = None    # what it will change away from
+
+    def arm(self, kind, value, from_value=None, seconds=SETTLE_SECONDS):
+        self.kind = kind
+        self.value = value
+        self.from_value = from_value
+        self.deadline = time.time() + seconds
+
+    def clear(self):
+        self.kind = self.value = self.from_value = None
+        self.deadline = 0.0
+
+    @property
+    def active(self):
+        return self.kind is not None
+
+    def remaining(self):
+        return max(0.0, self.deadline - time.time())
+
+    def expired(self):
+        return self.active and self.remaining() <= 0
+
+
 # ── sampling helpers ─────────────────────────────────────────────────────────
 def run(cmd, timeout=5):
     """
@@ -305,6 +422,42 @@ class ServerSampler:
                 json.JSONDecodeError, OSError, TimeoutError):
             return None
         return None
+
+    def live_settings(self):
+        """Current live decode policy (reasoning mode, depth, ...)."""
+        try:
+            req = urllib.request.Request(self.root + "/v1/mtplx/settings",
+                                         headers=self._headers())
+            with urllib.request.urlopen(req, timeout=4) as r:
+                return r.read().decode("utf-8", "replace")
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError):
+            return None
+
+    def set_thinking(self, level):
+        """
+        Change thinking live. The model stays loaded; only the decode policy
+        moves, so this is instant and safe mid-generation.
+
+        The restart-persistent default is THINKING in env.conf; this changes the
+        running server only.
+        """
+        if level == "off":
+            payload = {"reasoning": "off", "enable_thinking": False}
+        else:
+            effort = {"minimal": "low", "low": "low",
+                      "medium": "medium", "high": "xhigh"}.get(level, "low")
+            payload = {"reasoning": "on", "enable_thinking": True,
+                       "reasoning_effort": effort}
+        try:
+            req = urllib.request.Request(
+                self.root + "/v1/mtplx/settings",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **self._headers()})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return json.loads(r.read())
+        except (urllib.error.URLError, urllib.error.HTTPError,
+                json.JSONDecodeError, OSError):
+            return None
 
     def server_pid(self):
         if self.pid_file and os.path.exists(self.pid_file):
@@ -622,6 +775,155 @@ class Dashboard:
         self._frame = 0
         self._error_count = 0
         self._last_error = ""
+        self.pending = Pending()
+        self.status_note = ""        # one-line feedback under the panels
+        self.status_note_until = 0.0
+        self.levels = ["off", "minimal", "low", "medium", "high"]
+        self._cached_thinking = None
+        self._thinking_checked = 0.0
+
+    # ── model discovery ──────────────────────────────────────────────────────
+    def downloaded_models(self):
+        """
+        Models present on disk, newest-relevant first.
+
+        Directory names are owner--name, which is how fetch-model.sh lays them
+        out, so the repo id is recoverable without reading any manifest.
+        """
+        root = self.cfg.get("models_dir")
+        if not root or not os.path.isdir(root):
+            return []
+        found = []
+        try:
+            for name in sorted(os.listdir(root)):
+                path = os.path.join(root, name)
+                if not os.path.isdir(path) or "--" not in name:
+                    continue
+                if not any(f.endswith(".safetensors") for f in os.listdir(path)):
+                    continue
+                found.append({"repo": name.replace("--", "/", 1), "dir": path})
+        except OSError:
+            return []
+        return found
+
+    def short_model(self, repo):
+        """A label that fits in a footer: the tail of the repo id."""
+        tail = repo.split("/")[-1]
+        for marker in ("Uncensored-HauhauCS-Aggressive-MTPLX-",
+                       "Uncensored-MTPLX-", "-MTPLX-Optimized-Speed", "-MTPLX"):
+            if marker in tail:
+                head = tail.split(marker)[0]
+                return head if len(head) <= 22 else head[:21] + "…"
+        return tail if len(tail) <= 26 else tail[:25] + "…"
+
+    # ── live actions ─────────────────────────────────────────────────────────
+    def note(self, text, seconds=4.0):
+        self.status_note = text
+        self.status_note_until = time.time() + seconds
+
+    def current_thinking(self):
+        """The server's live setting, which may differ from env.conf."""
+        try:
+            data = json.loads(self.server.live_settings() or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return None
+        mode = data.get("reasoning")
+        if mode == "off":
+            return "off"
+        return data.get("reasoning_effort") or "minimal"
+
+    def apply_thinking(self, level):
+        payload = self.server.set_thinking(level)
+        if payload is None:
+            self.note(f"{RED}Could not change thinking - see run/server.log{RESET}", 6)
+            return
+        self.note(f"{GREEN}thinking -> {level}{RESET}  "
+                  f"{DIM}(live only; set THINKING in env.conf to persist){RESET}", 6)
+
+    def apply_model(self, repo):
+        """
+        Persist the choice and restart. The restart is detached, so the
+        dashboard survives it and simply shows "not running" until the new
+        model finishes loading.
+        """
+        env_file = self.cfg.get("env_file")
+        repo_dir = self.cfg.get("repo_dir")
+        if not env_file or not repo_dir:
+            self.note(f"{RED}Cannot switch models: env.conf path unknown{RESET}", 6)
+            return
+        try:
+            import re as _re
+            src = open(env_file).read()
+            src, n = _re.subn(r'^MODEL=.*$', f'MODEL="{repo}"', src,
+                              count=1, flags=_re.M)
+            if n != 1:
+                raise OSError("MODEL= not found in env.conf")
+            open(env_file, "w").write(src)
+        except OSError as exc:
+            self.note(f"{RED}Could not write env.conf: {exc}{RESET}", 8)
+            return
+        try:
+            subprocess.Popen([os.path.join(repo_dir, "restart.sh")],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             stdin=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as exc:
+            self.note(f"{RED}Could not restart: {exc}{RESET}", 8)
+            return
+        self.note(f"{GREEN}switching to {self.short_model(repo)}{RESET}  "
+                  f"{DIM}loading, this takes 30-90s{RESET}", 12)
+
+    # ── key handling ─────────────────────────────────────────────────────────
+    def handle_key(self, key):
+        if key is None:
+            return
+        # Everything is compared in lower case. Keys.poll() returns the literal
+        # "ESC" for an escape byte, so Escape must be matched as "esc" here -
+        # comparing against "ESC" after lowering is a silent no-op, and that
+        # bug let an accidental model switch commit twice during testing.
+        key = key.lower()
+
+        if key == "t":
+            cur = self.pending.value if self.pending.kind == "thinking" \
+                else (self.current_thinking() or "minimal")
+            if cur not in self.levels:
+                cur = "minimal"
+            nxt = self.levels[(self.levels.index(cur) + 1) % len(self.levels)]
+            self.pending.arm("thinking", nxt, from_value=cur)
+        elif key == "m":
+            models = self.downloaded_models()
+            if len(models) < 2:
+                self.note(f"{YELLOW}Only one model downloaded. "
+                          f"Try ./model_download.sh{RESET}", 5)
+                return
+            repos = [m["repo"] for m in models]
+            cur = self.pending.value if self.pending.kind == "model" \
+                else self.cfg.get("model_repo")
+            idx = repos.index(cur) if cur in repos else -1
+            self.pending.arm("model", repos[(idx + 1) % len(repos)], from_value=cur)
+        elif key in ("\r", "\n"):
+            if self.pending.active:
+                self._commit()
+        elif key == "esc":
+            if self.pending.active:
+                self.pending.clear()
+                self.note(f"{DIM}cancelled{RESET}", 3)
+        elif key == "q":
+            raise KeyboardInterrupt
+
+    def _commit(self):
+        kind, value = self.pending.kind, self.pending.value
+        self.pending.clear()
+        if kind == "thinking":
+            self.apply_thinking(value)
+        elif kind == "model":
+            self.apply_model(value)
+
+    def tick(self):
+        """Apply a pending action whose settle time has elapsed."""
+        if self.pending.expired():
+            self._commit()
 
     # ── one sample ───────────────────────────────────────────────────────────
     def collect(self):
@@ -758,6 +1060,15 @@ class Dashboard:
                  f"{DIM}   {cfg.get('lan_url', cfg['base'])}{RESET}")
         L.append("")
         return L
+
+    def _live_thinking_label(self):
+        """What thinking is actually set to right now, not what env.conf says."""
+        if self.pending.kind == "thinking":
+            return self.pending.value
+        live = self._cached_thinking
+        if live:
+            return live
+        return self.cfg.get("thinking", "?")
 
     def _header_lines(self):
         """Header line count, used to size everything else."""
@@ -998,8 +1309,28 @@ class Dashboard:
             L.pop()
         L.append("")
 
-        hint = (f"refresh {self.args.interval}s \u00b7 Ctrl-C to exit"
-                + ("" if self.power and self.power.available else " \u00b7 --power for ANE"))
+        # A pending toggle owns the footer: it is the thing needing a decision,
+        # and the countdown has to be visible or the delay feels like a hang.
+        if self.pending.active:
+            left_txt = self.short_model(self.pending.from_value or "?") \
+                if self.pending.kind == "model" else (self.pending.from_value or "?")
+            right_txt = self.short_model(self.pending.value) \
+                if self.pending.kind == "model" else self.pending.value
+            label = "model" if self.pending.kind == "model" else "thinking"
+            secs = self.pending.remaining()
+            hint = (f"{YELLOW}{label}: {left_txt} \u2192 {right_txt}{RESET}"
+                    f"   {BOLD}applying in {secs:.1f}s{RESET}"
+                    f"   {DIM}[same key] next  [Enter] now  [Esc] cancel{RESET}")
+        elif self.status_note and time.time() < self.status_note_until:
+            hint = self.status_note
+        else:
+            hint = (f"refresh {self.args.interval}s"
+                    + (f"   {BOLD}t{RESET}{DIM} thinking   "
+                       f"{BOLD}m{RESET}{DIM} model   q quit"
+                       if self.keys.enabled else " \u00b7 Ctrl-C to exit")
+                    + ("" if self.power and self.power.available
+                       else f"   \u00b7 --power for ANE")
+                    + RESET)
         # If the activity panel did not fit, its essentials ride along in the
         # footer rather than vanishing: who is connected and how much is running.
         if not activity_shown and s["server_up"]:
@@ -1092,36 +1423,49 @@ class Dashboard:
         if TTY_MODE:
             sys.stdout.write(SET_TITLE + HIDE_CURSOR)
             sys.stdout.flush()
+        self.keys = Keys(self.args.enable_keys and TTY_MODE)
         try:
-            while True:
-                started = time.time()
-                s = self.collect()
-                try:
-                    frame = self.render(s)
-                except Exception:                              # noqa: BLE001
-                    # This is a long-running display. A fault in one panel must
-                    # not kill the tool and dump a traceback over the frame -
-                    # that is exactly how the decode_tok_s bug announced itself.
-                    # Show a degraded frame, keep running, and leave the detail
-                    # in a log so it can actually be fixed.
-                    self._error_count += 1
-                    self._last_error = traceback.format_exc()
-                    self._log_fault(self._last_error)
-                    frame = self._fault_frame(s)
-                sys.stdout.write(frame)
-                sys.stdout.flush()
-                if self.args.iterations and self.args.iterations > 0:
-                    self.args.iterations -= 1
-                    if self.args.iterations == 0:
-                        break
-                time.sleep(max(0.2, self.args.interval - (time.time() - started)))
+            with self.keys:
+                self._loop()
         except KeyboardInterrupt:
             pass
         finally:
+            self.keys.restore()
             if TTY_MODE:
                 # Hand the heading back rather than leaving ours behind.
                 sys.stdout.write(CLEAR_TITLE + SHOW_CURSOR + "\n")
                 sys.stdout.flush()
+
+    def _loop(self):
+        while True:
+            started = time.time()
+            s = self.collect()
+            self.tick()
+            try:
+                frame = self.render(s)
+            except Exception:                                  # noqa: BLE001
+                # This is a long-running display. A fault in one panel must not
+                # kill the tool and dump a traceback over the frame - that is
+                # exactly how the decode_tok_s bug announced itself. Show a
+                # degraded frame, keep running, and leave the detail in a log.
+                self._error_count += 1
+                self._last_error = traceback.format_exc()
+                self._log_fault(self._last_error)
+                frame = self._fault_frame(s)
+            sys.stdout.write(frame)
+            sys.stdout.flush()
+            if self.args.iterations and self.args.iterations > 0:
+                self.args.iterations -= 1
+                if self.args.iterations == 0:
+                    break
+            # Wait out the refresh interval, but wake immediately on a key or
+            # when a pending action's countdown is about to expire.
+            wait = max(0.05, self.args.interval - (time.time() - started))
+            if self.pending.active:
+                wait = min(wait, max(0.02, self.pending.remaining()))
+            key = self.keys.poll(wait)
+            if key is not None:
+                self.handle_key(key)
 
 
 # ── one-shot report (previously status.sh) ───────────────────────────────────
@@ -1249,6 +1593,9 @@ def main():
                     help="add ANE/GPU power via passwordless sudo powermetrics")
     ap.add_argument("--iterations", type=int, default=0,
                     help="stop after N refreshes (0 = run until Ctrl-C)")
+    ap.add_argument("--no-keys", dest="enable_keys", action="store_false",
+                    default=True,
+                    help="disable the t/m key toggles (display only)")
     ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args()
 
