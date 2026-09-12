@@ -36,6 +36,7 @@ print(json.dumps({
     "api_key": open("${API_KEY_FILE}").read().strip() if os.path.exists("${API_KEY_FILE}") else "",
     "api_key_short": (open("${API_KEY_FILE}").read().strip()[:12] + "...") if os.path.exists("${API_KEY_FILE}") else "none",
     "pid_file": "${PID_FILE}",
+    "log_file": "${LOG_FILE}",
     "model_dir": "${MODEL_DIR}",
     "model": "${MODEL}",
     "model_repo": "${MODEL_REPO}",

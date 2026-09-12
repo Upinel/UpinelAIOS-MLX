@@ -67,49 +67,60 @@ the OpenAI Python SDK.
 `./status.sh` is a live dashboard, refreshed once a second:
 
 ```
-  Qwen3.8-27B Agent                                            ● serving  up 02:14:33
-  ────────────────────────────────────────────────────────────────────────────────
+  Qwen3.8-27B Agent                                        ● serving  up 02:14:33
+  ──────────────────────────────────────────────────────────────────────────────
   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
   sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
 
-    SYSTEM                               ACTIVITY
-    CPU   ███░░░░░░░░░░░░░░░   15.9%     in-flight      1
-    GPU   ██████████████████    100%     sessions       6
-    ANE   ░░░░░░░░░░░░░░░░░░   n/a       decode live    22.4 t/s
-    RAM   ████████████████░░   40.0G     last prompt    34500 tok
-    SWAP  ████████████████░░   11.5G     last ttft      9.42s
+  HOST                                ENDPOINT PROCESS
+  CPU   █████░░░░░░░░░░░   32.6%      weights        14.9G ███████░░░
+  GPU   ████████████████    100%      session bank   2.55G █░░░░░░░░░
+  ANE   ░░░░░░░░░░░░░░░░   n/a        generation     3.82G ██░░░░░░░░
+  RAM   ███████████░░░░░   44.9G      kv cache       5.76G ███░░░░░░░
+  SWAP  ██████████████░░   11.4G      ───────────────────────────────
+  cpu 17u/15s  nominal  pressure L1   total          21.3G  peak 28.9G
+                                      host free      5.33G  (+13.8G cached)
 
-    MEMORY  64 GB unified                RECENT REQUESTS   ctx / decode / tok / stop
-    wired        28.9G  █████░░░░░░░       34500    11.3 t/s    153  tool_call
-    app          9.40G  ██░░░░░░░░░░       33434    12.7 t/s    796  tool_call
-    cached       21.4G  ████░░░░░░░░         547    22.4 t/s    192  length
-    free         2.80G  █░░░░░░░░░░░         934    22.4 t/s     70  tool_call
+  CONCURRENT ACTIVITY                                  CLIENTS  connected peers
+  in-flight 1   sessions 1   lane solo_mtp             10.0.1.69   1 conn  python3.1
+  chatcmpl-2b476…   219s anon-1125623 23865 ctx  1867 tok @ 16.7 t/s
+    “please just write something, it seems like you are n…”
 
-    cpu ▁▂▃▅▇█▇▅▃▂▁        gpu ▁▂▅█▇▅▃▂▁        t/s ▃▅█▇▅▃
+  TOKEN RATE  live, last 126 samples  min 14.5 avg 16.1 max 22.9   TOKENS GENERATED
+    17.0                                      ▄▃▃▃▃▃▂▂▁▁▁▁▁  ▁   output        16,105
+                                        ▁▃▆█▅▆▅▆▇████████████  input        384,355
+        ▅ ▂▃▂▁              ▁▁   ▇▇▇▅▄▄▃▅▅▆▅▅▆▇▇█████████████  total        400,460
+        ████████▇▇▂▄▅▅▅▁▃▄▄▄▃▃▅▆▇▇██▇▆▇▆▆▆████▇▇▇▅▆████████████  requests          38
+    15.3 now 16.7 t/s                                            since restart      0
 ```
 
-| Setting | What it shows | Source |
+| Panel | What it shows | Source |
 |---|---|---|
-| CPU | total, plus user/sys split | `host_statistics` tick deltas — exact, no sudo |
-| GPU | the GPU's own busy counter | IOKit `IOAccelerator`, no sudo |
-| ANE | `n/a` unless `--power` | see the note below |
-| RAM | wired / app / cached / compressed / free | `vm_stat`, conventional macOS breakdown |
-| ACTIVITY | in-flight requests, sessions, live decode rate, last TTFT | MTPLX `/health`, `/admin/sessions`, `/metrics` |
+| HOST | CPU (with user/sys split), GPU, ANE, RAM, swap, thermal, memory pressure | `host_statistics`, IOKit, `vm_stat` |
+| ENDPOINT PROCESS | the inference process's own MLX allocation: weights, session bank, generation working set, KV cache, total and peak | MTPLX telemetry `mem` |
+| CONCURRENT ACTIVITY | in-flight requests with live per-request token counts and decode rate, session count, scheduler lane | MTPLX `in_flight`, `scheduler` |
+| CLIENTS | TCP peers currently connected, with process names | `lsof` |
+| TOKEN RATE | live decode rate, charted, with min/avg/max over the window | MTPLX `rolling.live_history` |
+| TOKENS GENERATED | output, input, total and request counts | incremental scan of `run/server.log` |
 
-`--once` prints a plain summary for logs and scripts, `--json` emits a
-machine-readable snapshot, and `--interval N` slows the refresh.
+`--once` prints a plain summary for logs and scripts, `--json` a
+machine-readable snapshot, `--interval N` slows the refresh.
 
-**On the ANE.** Apple exposes the Neural Engine only through `powermetrics`,
-which needs root. More importantly, **MLX does not use the ANE** — this
-workload is GPU-only, so the ANE really is idle. Rather than fabricate a
-number, the dashboard shows `n/a` and offers `--power` to read the real
-figures via `sudo powermetrics` when you have passwordless sudo configured.
+### Two limits, stated rather than hidden
 
-**On the GPU number.** `IOAccelerator` reports the *whole* GPU, including
-WindowServer and browser compositing, which is why it can read high even when
-the model is idle. It is a good signal for "is the machine busy", not a
-per-process attribution. The `renderer` and `tiler` counters under the gauges
-are usually more informative.
+**Client IPs come from the socket table, not the request.** MTPLX does not
+record which request came from which peer, so `CLIENTS` answers "who is
+connected to this port right now", not "who sent this particular prompt". It is
+still the right tool for "is anything else on my LAN using my Mac?" — which is
+usually the actual question.
+
+**The ANE is shown as `n/a`.** Apple exposes the Neural Engine only through
+`powermetrics`, which needs root — and MLX is GPU-only, so it genuinely is idle
+for this workload. `--power` reads the real figures when you have passwordless
+sudo. The GPU number needs no such compromise: IOKit publishes the GPU's own
+busy counter unprivileged. Note that counter is **system-wide**, so WindowServer
+and browser compositing are included; it answers "is the machine busy", not
+"how much is the model using".
 
 ---
 

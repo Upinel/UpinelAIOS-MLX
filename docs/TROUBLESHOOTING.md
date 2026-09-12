@@ -8,10 +8,17 @@
 tail -n 60 run/server.log      # what the server actually said
 ```
 
-The dashboard's `MEMORY` column is the fastest way to spot trouble: if `wired`
-is above ~40 GB or `free` is under ~3 GB, you are in the swap zone described
-below. The `RECENT REQUESTS` table shows decode rate per request, which makes a
-collapsing throughput obvious at a glance.
+Two panels are the fastest way to spot trouble:
+
+- **ENDPOINT PROCESS** — the inference process's own allocation. Watch `total`
+  against `host free`: when `total` climbs past ~30 GB on a 64 GB Mac and
+  `host free` drops under 3 GB, you are in the swap zone described below.
+- **TOKEN RATE** — a chart of live decode rate. A collapsing throughput shows
+  up immediately as a descending line, and the min/avg/max figures tell you
+  whether it is a blip or a trend.
+
+The **CLIENTS** panel shows who is connected. If something you do not recognise
+is using your endpoint, that is where you will see it.
 
 `run/server.log` is the whole story. Every failure below was diagnosed from it.
 
