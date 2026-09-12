@@ -1,7 +1,7 @@
 <h1 align="center">UpinelAIOS</h1>
 
 <p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac</b><br>
-A local, uncensored, OpenAI-compatible agent endpoint on your own Apple Silicon Mac.<br>
+A local, uncensored, OpenAI-compatible MLX (MTPLX) agent endpoint on your own Apple Silicon Mac.<br>
 One command to install. One command to serve. Your data never leaves the LAN.</p>
 
 ---
