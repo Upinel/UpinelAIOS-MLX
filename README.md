@@ -125,6 +125,14 @@ because both are things you copy into a client.
 machine-readable snapshot, `--key` prints only the API key (handy for
 `export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
 
+The window heading is pinned to **UpinelAIOS Status** for as long as the
+dashboard runs, and released when you exit. This needs saying because it is not
+automatic: Terminal.app titles the window from whichever process is in front of
+the tty, and a dashboard that shells out to `lsof`, `ioreg` and `pmset` once a
+second would otherwise make the heading flicker between those names and
+`python3`. The probes are launched with `setsid` so they have no controlling
+terminal at all, and the title is re-asserted on every frame.
+
 The layout adapts to your window. Panels are admitted in priority order —
 identity, then host and process memory, then the token rate, then concurrent
 activity — and anything that will not fit is dropped rather than drawn past the

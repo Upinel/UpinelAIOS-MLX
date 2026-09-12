@@ -56,6 +56,13 @@ RED, GREEN, YELLOW, BLUE, CYAN, MAGENTA = (
 HOME, CLR_EOL, CLR_EOS = "\033[H", "\033[K", "\033[J"
 HIDE_CURSOR, SHOW_CURSOR = "\033[?25l", "\033[?25h"
 
+# Window/tab title. OSC 0 sets icon + title, OSC 2 the window title; Terminal
+# and iTerm2 both honour them. Re-asserted every frame so nothing else can
+# claim the heading.
+WINDOW_TITLE = "UpinelAIOS Status"
+SET_TITLE = f"\033]0;{WINDOW_TITLE}\007\033]2;{WINDOW_TITLE}\007"
+CLEAR_TITLE = "\033]0;\007\033]2;\007"
+
 
 def term_size():
     sz = shutil.get_terminal_size((100, 30))
@@ -64,9 +71,19 @@ def term_size():
 
 # ── sampling helpers ─────────────────────────────────────────────────────────
 def run(cmd, timeout=5):
-    """Run a command, return stdout or '' on any failure."""
+    """
+    Run a probe command, return stdout or '' on any failure.
+
+    start_new_session=True is load-bearing, not hygiene. Without it each probe
+    shares our session and controlling terminal, and Terminal.app titles the
+    window from whatever process group is in front of the tty - so spawning
+    lsof, ioreg and pmset once a second made the window heading flicker between
+    "lsof", "ioreg", "python3" and back. setsid() detaches them completely, so
+    the terminal never sees them at all.
+    """
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=timeout, start_new_session=True)
         return p.stdout
     except (subprocess.SubprocessError, OSError):
         return ""
@@ -186,8 +203,9 @@ class PowerSampler:
     def __init__(self):
         self.available = False
         try:
-            p = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=3)
-            self.available = (p.returncode == 0)
+            probe = subprocess.run(["sudo", "-n", "true"], capture_output=True,
+                                   timeout=3, start_new_session=True)
+            self.available = (probe.returncode == 0)
         except (subprocess.SubprocessError, OSError):
             self.available = False
 
@@ -219,12 +237,6 @@ def swap_usage():
     return {"total_gb": float(m.group(1)) / 1024,
             "used_gb": float(m.group(2)) / 1024,
             "free_gb": float(m.group(3)) / 1024}
-
-
-def memory_pressure_free_pct():
-    out = run(["memory_pressure"], timeout=6)
-    m = re.search(r"System-wide memory free percentage:\s+(\d+)%", out)
-    return int(m.group(1)) if m else None
 
 
 def proc_stats(pid):
@@ -966,11 +978,11 @@ class Dashboard:
             body = "\n".join(strip_ansi(x) if not USE_COLOR else x for x in L)
             return body + "\n" + "\u2500" * min(width, 78) + "\n"
 
-        return HOME + "\n".join(x + CLR_EOL for x in L) + CLR_EOS
+        return SET_TITLE + HOME + "\n".join(x + CLR_EOL for x in L) + CLR_EOS
 
     def run(self):
         if TTY_MODE:
-            sys.stdout.write(HIDE_CURSOR)
+            sys.stdout.write(SET_TITLE + HIDE_CURSOR)
             sys.stdout.flush()
         try:
             while True:
@@ -987,7 +999,8 @@ class Dashboard:
             pass
         finally:
             if TTY_MODE:
-                sys.stdout.write(SHOW_CURSOR + "\n")
+                # Hand the heading back rather than leaving ours behind.
+                sys.stdout.write(CLEAR_TITLE + SHOW_CURSOR + "\n")
                 sys.stdout.flush()
 
 
