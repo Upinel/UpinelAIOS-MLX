@@ -34,7 +34,6 @@ as it found it.
 ## Requirements
 
 | | |
-|---|---|
 | **Minimum** | Apple Silicon Mac, **32 GB** unified memory, macOS 14+, ~25 GB free disk |
 | **Recommended** | **64 GB** or more, for 128K context with headroom for a normal desktop |
 | **Chip** | Any M-series. Speed scales with memory bandwidth, not core count. |
@@ -454,10 +453,22 @@ won't answer.
 | `27b-3bit` | 14 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
 | `27b-4bit` | 17 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
 | `9b` | 6 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster |
+| `moe` | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **fastest**, 3B active |
 
 Each is an MLX pack with a verified MTP head, which is what makes the
 speculative decoding work. The HauhauCS Aggressive fine-tune is the basis of
-the default.
+the default. `moe` is the speed pick: a mixture-of-experts model with only 3B
+parameters active per token, so it is several times faster than the dense 27B
+for the same memory footprint — its publisher measured depth 1 at 89 tok/s.
+
+**On Gemma 4.** It is not in the list because no uncensored Gemma 4 pack with a
+working MTP head exists for MTPLX. The abundant uncensored Gemma 4 releases —
+HauhauCS, heretic, abliterated — are GGUF for llama.cpp, and the MLX
+conversions carry neither MTP weights nor a runtime contract, so MTPLX would
+run them autoregressive-only at roughly a third of the speed. Adding one would
+mean offering a suggestion that underperforms this bundle's whole premise. If
+you want Gemma 4 uncensored, use llama.cpp directly; it is a different stack,
+not a different setting here.
 
 ```bash
 ./model_download.sh                # what is available, what you have

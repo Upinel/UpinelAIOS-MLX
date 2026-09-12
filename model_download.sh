@@ -21,15 +21,18 @@ case "${1:-}" in
 esac
 
 size_hint_for() {
+  # Order matters: bash case takes the FIRST match, so the specific
+  # "35B-A3B" pattern has to come before the generic "-MTPLX-4bit" one or the
+  # MoE is reported at the dense model's size.
   case "$1" in
-    *HauhauCS-Aggressive-MTPLX-6bit*) echo "23 GB" ;;
-    *HauhauCS-Aggressive-MTPLX-4bit*) echo "15 GB" ;;
-    *MTPLX-3bit*)                     echo "14 GB" ;;
-    *MTPLX-4bit*)                     echo "17 GB" ;;
-    *MTPLX-6bit*)                     echo "23 GB" ;;
-    *9B*|*9b*)                        echo "6 GB" ;;
-    *35B*|*A3B*|*A10B*|*122B*)        echo "21 GB+" ;;
-    *)                                echo "unknown" ;;
+    *35B-A3B*|*26B-A4B*|*A10B*|*122B*) echo "22 GB+" ;;
+    *HauhauCS-Aggressive-MTPLX-6bit*)   echo "23 GB" ;;
+    *HauhauCS-Aggressive-MTPLX-4bit*)   echo "15 GB" ;;
+    *MTPLX-3bit*)                       echo "14 GB" ;;
+    *MTPLX-6bit*)                       echo "23 GB" ;;
+    *MTPLX-4bit*)                       echo "17 GB" ;;
+    *9B*|*9b*)                          echo "6 GB" ;;
+    *)                                  echo "unknown" ;;
   esac
 }
 

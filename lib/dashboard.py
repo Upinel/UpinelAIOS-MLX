@@ -812,8 +812,9 @@ class Dashboard:
         for marker in ("Uncensored-HauhauCS-Aggressive-MTPLX-",
                        "Uncensored-MTPLX-", "-MTPLX-Optimized-Speed", "-MTPLX"):
             if marker in tail:
-                head = tail.split(marker)[0]
-                return head if len(head) <= 22 else head[:21] + "…"
+                head = tail.split(marker)[0].rstrip("-_.")
+                if head:
+                    return head if len(head) <= 22 else head[:21] + "…"
         return tail if len(tail) <= 26 else tail[:25] + "…"
 
     # ── live actions ─────────────────────────────────────────────────────────
@@ -837,6 +838,10 @@ class Dashboard:
         if payload is None:
             self.note(f"{RED}Could not change thinking - see run/server.log{RESET}", 6)
             return
+        # Update the footer immediately rather than waiting for the next
+        # periodic refresh, which only runs every few seconds.
+        self._cached_thinking = level
+        self._thinking_checked = time.time()
         self.note(f"{GREEN}thinking -> {level}{RESET}  "
                   f"{DIM}(live only; set THINKING in env.conf to persist){RESET}", 6)
 
@@ -1324,13 +1329,20 @@ class Dashboard:
         elif self.status_note and time.time() < self.status_note_until:
             hint = self.status_note
         else:
-            hint = (f"refresh {self.args.interval}s"
-                    + (f"   {BOLD}t{RESET}{DIM} thinking   "
-                       f"{BOLD}m{RESET}{DIM} model   q quit"
-                       if self.keys.enabled else " \u00b7 Ctrl-C to exit")
-                    + ("" if self.power and self.power.available
-                       else f"   \u00b7 --power for ANE")
-                    + RESET)
+            if self.keys.enabled:
+                # Show each toggle with its current value, so the footer is a
+                # readout as well as a keymap - you can see what t and m are
+                # sitting on without pressing them.
+                hint = (f"{BOLD}t{RESET}{DIM} thinking{RESET}"
+                        f"{CYAN}={self._live_thinking_label()}{RESET}"
+                        f"   {BOLD}m{RESET}{DIM} model{RESET}"
+                        f"{CYAN}={self.short_model(self.cfg.get('model_repo',''))}{RESET}"
+                        f"   {DIM}q quit{RESET}")
+            else:
+                hint = (f"refresh {self.args.interval}s \u00b7 Ctrl-C to exit"
+                        + ("" if self.power and self.power.available
+                           else f" \u00b7 --power for ANE")
+                        + RESET)
         # If the activity panel did not fit, its essentials ride along in the
         # footer rather than vanishing: who is connected and how much is running.
         if not activity_shown and s["server_up"]:

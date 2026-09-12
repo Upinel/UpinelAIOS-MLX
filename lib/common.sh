@@ -58,6 +58,11 @@ show_usage() {
 #   27b-3bit   14 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit
 #   27b-4bit   17 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit
 #   9b          6 GB   Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX
+#   moe        22 GB   hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16
+#
+#   "moe" is the speed pick: a mixture-of-experts model with 3B active per
+#   token, so it is several times faster than the dense 27B at the same memory
+#   footprint. Its publisher measured depth 1 at 89 tok/s.
 #
 # Nothing smaller than 9B is listed because a 27B is what this bundle is built
 # and measured around; smaller uncensored MTPLX packs exist if you want to try
@@ -65,7 +70,7 @@ show_usage() {
 #
 # NOTE: a case statement, not an associative array. macOS ships bash 3.2,
 # which has no `declare -A`, and this bundle must run on a stock Mac.
-MODEL_ALIASES="4bit 6bit 27b-3bit 27b-4bit 9b"
+MODEL_ALIASES="4bit 6bit 27b-3bit 27b-4bit 9b moe"
 
 model_repo_for() {
   case "$1" in
@@ -74,6 +79,7 @@ model_repo_for() {
     27b-3bit)  echo "barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit" ;;
     27b-4bit)  echo "barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit" ;;
     9b)        echo "Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX" ;;
+    moe)       echo "hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16" ;;
     */*)       echo "$1" ;;
     *)         die "MODEL=\"$1\" is neither a known alias nor an owner/name repo id.
     Known aliases: $MODEL_ALIASES" ;;
@@ -83,7 +89,7 @@ model_repo_for() {
 # Is this alias/repo one we have measured and endorse?
 model_is_known_alias() {
   case "$1" in
-    4bit|6bit|27b-3bit|27b-4bit|9b) return 0 ;;
+    4bit|6bit|27b-3bit|27b-4bit|9b|moe) return 0 ;;
     *) return 1 ;;
   esac
 }
