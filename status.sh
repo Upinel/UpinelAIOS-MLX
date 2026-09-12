@@ -39,6 +39,7 @@ print(json.dumps({
     "log_file": "${LOG_FILE}",
     "model_dir": "${MODEL_DIR}",
     "model": "${MODEL}",
+    "served_name": "${SERVED_MODEL_NAME}",
     "model_repo": "${MODEL_REPO}",
     "context": "${CONTEXT_WINDOW}",
     "kv": "${KV_QUANT}",

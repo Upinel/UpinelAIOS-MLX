@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Qwen3.8-27B agent endpoint.
+# Start the UpinelAIOS server.
 #
 #   ./start.sh                 start in the background (default)
 #   ./start.sh --foreground    run attached to this terminal (Ctrl-C to stop)
@@ -20,7 +20,7 @@ for arg in "$@"; do
   esac
 done
 
-step "Qwen3.8-27B agent endpoint"
+step "UpinelAIOS server"
 
 # ── preflight ────────────────────────────────────────────────────────────────
 is_apple_silicon || die "This bundle needs an Apple Silicon Mac."

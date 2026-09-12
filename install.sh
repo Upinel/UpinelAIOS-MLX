@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup for the M5 Pro Qwen Agent bundle.
+# One-time setup for the UpinelAIOS bundle.
 #
 #   ./install.sh                 scan hardware, suggest settings, install
 #   ./install.sh --yes           accept the suggested settings without asking
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-step "M5 Pro Qwen Agent - installer"
+step "UpinelAIOS - Upinel's One-Click AI Agent Server OS for Mac"
 
 is_apple_silicon || die "This bundle targets Apple Silicon Macs. Detected: $(uname -s)/$(uname -m)."
 require_macos

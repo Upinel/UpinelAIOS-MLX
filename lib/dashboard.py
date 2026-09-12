@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Real-time dashboard for the Qwen3.8-27B agent endpoint.
+Real-time dashboard for the UpinelAIOS server.
 
   ./status.sh                 live dashboard, 1s refresh, Ctrl-C to exit
   ./status.sh --once          one-shot summary (scripts, logs)
@@ -630,13 +630,14 @@ class Dashboard:
         mm, ss = divmod(rem, 60)
 
         # ── header ──
-        title = f"{BOLD}Qwen3.8-27B Agent{RESET}"
+        title = f"{BOLD}UpinelAIOS{RESET}"
         status = (f"{GREEN}\u25cf serving{RESET}" if s["server_up"]
                   else f"{RED}\u25cf not running{RESET}")
         clock = f"up {hh:02d}:{mm:02d}:{ss:02d}"
         pad = max(1, width - len(strip_ansi(title)) - len(strip_ansi(status))
                   - len(clock) - 4)
         L.append(f"{title}{' ' * pad}{status}  {DIM}{clock}{RESET}")
+        L.append(f"{DIM}  Upinel's One-Click AI Agent Server OS for Mac{RESET}")
         L.append(DIM + "\u2500" * width + RESET)
         L.append(f"  {DIM}{truncate(cfg['model_repo'], width - 4)}{RESET}")
         bits = [cfg.get("profile", "?"), f"MTP d{cfg.get('depth','?')}",
@@ -646,6 +647,7 @@ class Dashboard:
                 f"ctx {cfg.get('context','?')}"]
         L.append("  " + DIM + " \u00b7 ".join(bits) + RESET)
         L.append(f"  {CYAN}{cfg.get('lan_url', cfg['base'])}{RESET}"
+                 f"{DIM}   model {BOLD}{cfg.get('served_name','')}{RESET}"
                  f"{DIM}   key {cfg.get('api_key_short','')}{RESET}")
         L.append("")
 
@@ -839,7 +841,8 @@ class Dashboard:
 # ── one-shot report (previously status.sh) ───────────────────────────────────
 def print_once(cfg, snap):
     s = snap
-    print(f"\n{BOLD}Qwen3.8-27B agent endpoint - status{RESET}\n")
+    print(f"\n{BOLD}UpinelAIOS{RESET} {DIM}- "
+          f"Upinel's One-Click AI Agent Server OS for Mac{RESET}\n")
 
     print(f"{BOLD}Configuration{RESET}  (env.conf)")
     print(f"  {'model':<18} {cfg['model_repo']}")

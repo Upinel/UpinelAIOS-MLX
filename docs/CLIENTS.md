@@ -1,20 +1,24 @@
 # Connecting your agents
 
-The server speaks the OpenAI Chat Completions API, plus an Anthropic-compatible
-`/v1/messages`. Anything that lets you set a base URL works.
+Point any OpenAI-compatible client at UpinelAIOS. It speaks Chat Completions,
+an Anthropic-compatible `/v1/messages`, and streaming tool calls in both shapes.
 
 ```
 Base URL:  http://<mac-lan-ip>:8000/v1
-API key:   the contents of run/api-key   (also printed by ./start.sh and ./status.sh)
-Model:     qwen3.8-27b-agent             (or whatever SERVED_MODEL_NAME says)
+Model:     Upinel-AIOS             (or whatever SERVED_MODEL_NAME says)
+API key:   the contents of run/api-key
 ```
 
-`./status.sh` prints your exact LAN address and key. From another machine on the
-same network, verify first:
+`./status.sh` prints all three. From another machine on the same network,
+verify first:
 
 ```bash
 curl http://192.168.1.20:8000/v1/models -H "Authorization: Bearer $KEY"
 ```
+
+> **Changed `SERVED_MODEL_NAME`?** Clients asking for the old id will start
+> failing. Update the model field in each client, or set the name back.
+> `./status.sh` always shows the id the server is currently advertising.
 
 ---
 
@@ -74,7 +78,7 @@ request if it knows how to pass template kwargs:
 
 ```json
 {
-  "model": "qwen3.8-27b-agent",
+  "model": "Upinel-AIOS",
   "messages": [{"role": "user", "content": "hi"}],
   "chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "medium"}
 }
@@ -119,7 +123,7 @@ Choose the OpenAI-compatible provider and set:
 
 ```
 Base URL:  http://<mac-ip>:8000/v1
-Model:     qwen3.8-27b-agent
+Model:     Upinel-AIOS
 API Key:   <your key>
 ```
 
@@ -128,7 +132,7 @@ API Key:   <your key>
 ```bash
 export OPENAI_API_BASE="http://<mac-ip>:8000/v1"
 export OPENAI_API_KEY="$(cat run/api-key)"
-aider --model openai/qwen3.8-27b-agent
+aider --model openai/Upinel-AIOS
 ```
 
 ## OpenAI Python SDK
@@ -139,7 +143,7 @@ from openai import OpenAI
 client = OpenAI(base_url="http://192.168.1.20:8000/v1", api_key="YOUR_KEY")
 
 stream = client.chat.completions.create(
-    model="qwen3.8-27b-agent",
+    model="Upinel-AIOS",
     messages=[{"role": "user", "content": "Write a haiku about memory bandwidth."}],
     max_tokens=512,
     stream=True,

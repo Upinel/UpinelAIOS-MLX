@@ -1,4 +1,10 @@
-# M5 Pro Qwen Agent
+<h1 align="center">UpinelAIOS</h1>
+
+<p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac</b><br>
+A local, uncensored, OpenAI-compatible agent endpoint on your own Apple Silicon Mac.<br>
+One command to install. One command to serve. Your data never leaves the LAN.</p>
+
+---
 
 A portable, one-command **Qwen3.8-27B uncensored agent endpoint** for Apple
 Silicon Macs, tuned for maximum tokens/sec and long-context agent work.
@@ -11,16 +17,24 @@ Built and measured on an **M5 Pro / 20-core GPU / 64 GB**, serving
 ~40-53 tok/s short-context decode   (2.6-3.4x over autoregressive)
 128K context default, 262K capable
 OpenAI-compatible API on your LAN
+live dashboard for CPU, GPU, memory and token throughput
 ```
 
-Clone it, edit `env.conf`, run `./start.sh`. Nothing else.
+Clone it, run `./install.sh`, run `./start.sh`. Nothing else.
+
+**What "Server OS" means here, precisely:** UpinelAIOS is not an operating
+system. It is a self-contained serving stack — runtime, model, configuration,
+lifecycle, telemetry and diagnostics — that turns a Mac into an agent server
+appliance with a single command. It installs nothing into your system beyond
+Homebrew's `mtplx` and the model weights, and `./stop.sh` leaves the machine
+as it found it.
 
 ---
 
 ## Quick start
 
 ```bash
-git clone <this repo> && cd M5Pro-QwenAgent
+git clone https://github.com/upinel/UpinelAIOS && cd UpinelAIOS
 
 ./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
@@ -67,7 +81,7 @@ the OpenAI Python SDK.
 `./status.sh` is a live dashboard, refreshed once a second:
 
 ```
-  Qwen3.8-27B Agent                                        ● serving  up 02:14:33
+  UpinelAIOS                                        ● serving  up 02:14:33
   ──────────────────────────────────────────────────────────────────────────────
   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
   sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
@@ -326,6 +340,8 @@ lib/fetch-model.sh    resumable HF downloader, no pip dependency
 bench/bench.sh        sweep / tune entrypoint
 bench/bench.py        streaming benchmark harness
 bench/verify-tools.sh tool-calling diagnostic — run this if an agent misbehaves
+bench/ab.sh           A/B two settings against each other
+service.sh            optional launchd login service
 lib/preflight.sh      hardware scan and per-machine configuration suggestions
 docs/TUNING.md        the full performance story and every knob
 docs/TROUBLESHOOTING.md  what to do when something does not work

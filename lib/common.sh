@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the M5 Pro Qwen Agent bundle.
+# Shared helpers for the UpinelAIOS bundle.
 # Sourced by install.sh / start.sh / stop.sh / status.sh / bench/bench.sh
 
 set -euo pipefail
@@ -88,7 +88,7 @@ load_config() {
   HOST="0.0.0.0"
   PORT=8000
   API_KEY_FILE="$REPO_DIR/run/api-key"
-  SERVED_MODEL_NAME="qwen3.8-27b-agent"
+  SERVED_MODEL_NAME="Upinel-AIOS"
   RATE_LIMIT=0
   FAN_MODE="default"
   NGRAM_PREWARM="auto"

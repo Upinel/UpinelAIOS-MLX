@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop the Qwen3.8-27B agent endpoint.
+# Stop the UpinelAIOS server.
 #
 #   ./stop.sh            graceful shutdown (recommended)
 #   ./stop.sh --force    SIGKILL - only if graceful stop hangs

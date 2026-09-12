@@ -12,7 +12,7 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 load_config
 
-LABEL="com.m5pro.qwenagent"
+LABEL="com.upinel.upinelaios"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 
 case "${1:-}" in

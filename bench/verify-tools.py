@@ -7,7 +7,7 @@ tools?" separately from "is my agent harness wired up correctly?" — which are
 different failures with the same symptom.
 
 Usage:
-  bench/verify-tools.py --url http://127.0.0.1:8000 --model qwen3.8-27b-agent
+  bench/verify-tools.py --url http://127.0.0.1:8000 --model Upinel-AIOS
 """
 
 import argparse
@@ -115,7 +115,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default="http://127.0.0.1:8000")
-    ap.add_argument("--model", default="qwen3.8-27b-agent")
+    ap.add_argument("--model", default="Upinel-AIOS")
     ap.add_argument("--api-key")
     ap.add_argument("--api-key-file")
     ap.add_argument("--timeout", type=int, default=600)

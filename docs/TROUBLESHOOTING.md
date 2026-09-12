@@ -150,7 +150,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $(cat run/api-key)" \
   -d '{
-    "model": "qwen3.8-27b-agent",
+    "model": "Upinel-AIOS",
     "messages": [{"role":"user","content":"Create /tmp/x.txt containing hi. Use the tool."}],
     "tools": [{"type":"function","function":{
       "name":"write_file",
