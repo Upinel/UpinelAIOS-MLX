@@ -24,7 +24,7 @@ git clone <this repo> && cd M5Pro-QwenAgent
 
 ./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
-./status.sh           # what is running, and the API key
+./status.sh           # live dashboard: CPU, GPU, memory, live decode rate
 ./stop.sh
 ```
 
@@ -59,6 +59,57 @@ Total time is 15–30 minutes, most of it the download.
 Point any OpenAI-compatible client at the URL `status.sh` prints. See
 [docs/CLIENTS.md](docs/CLIENTS.md) for Open WebUI, Claude Code, Cline, Aider, and
 the OpenAI Python SDK.
+
+---
+
+## Watching it work
+
+`./status.sh` is a live dashboard, refreshed once a second:
+
+```
+  Qwen3.8-27B Agent                                            ● serving  up 02:14:33
+  ────────────────────────────────────────────────────────────────────────────────
+  itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+  sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
+
+    SYSTEM                               ACTIVITY
+    CPU   ███░░░░░░░░░░░░░░░   15.9%     in-flight      1
+    GPU   ██████████████████    100%     sessions       6
+    ANE   ░░░░░░░░░░░░░░░░░░   n/a       decode live    22.4 t/s
+    RAM   ████████████████░░   40.0G     last prompt    34500 tok
+    SWAP  ████████████████░░   11.5G     last ttft      9.42s
+
+    MEMORY  64 GB unified                RECENT REQUESTS   ctx / decode / tok / stop
+    wired        28.9G  █████░░░░░░░       34500    11.3 t/s    153  tool_call
+    app          9.40G  ██░░░░░░░░░░       33434    12.7 t/s    796  tool_call
+    cached       21.4G  ████░░░░░░░░         547    22.4 t/s    192  length
+    free         2.80G  █░░░░░░░░░░░         934    22.4 t/s     70  tool_call
+
+    cpu ▁▂▃▅▇█▇▅▃▂▁        gpu ▁▂▅█▇▅▃▂▁        t/s ▃▅█▇▅▃
+```
+
+| Setting | What it shows | Source |
+|---|---|---|
+| CPU | total, plus user/sys split | `host_statistics` tick deltas — exact, no sudo |
+| GPU | the GPU's own busy counter | IOKit `IOAccelerator`, no sudo |
+| ANE | `n/a` unless `--power` | see the note below |
+| RAM | wired / app / cached / compressed / free | `vm_stat`, conventional macOS breakdown |
+| ACTIVITY | in-flight requests, sessions, live decode rate, last TTFT | MTPLX `/health`, `/admin/sessions`, `/metrics` |
+
+`--once` prints a plain summary for logs and scripts, `--json` emits a
+machine-readable snapshot, and `--interval N` slows the refresh.
+
+**On the ANE.** Apple exposes the Neural Engine only through `powermetrics`,
+which needs root. More importantly, **MLX does not use the ANE** — this
+workload is GPU-only, so the ANE really is idle. Rather than fabricate a
+number, the dashboard shows `n/a` and offers `--power` to read the real
+figures via `sudo powermetrics` when you have passwordless sudo configured.
+
+**On the GPU number.** `IOAccelerator` reports the *whole* GPU, including
+WindowServer and browser compositing, which is why it can read high even when
+the model is idle. It is a good signal for "is the machine busy", not a
+per-process attribution. The `renderer` and `tiler` counters under the gauges
+are usually more informative.
 
 ---
 
@@ -257,7 +308,8 @@ under 32 generated tokens are flagged as noise.
 env.conf              the only file you edit
 install.sh            deps + model download + MTP depth tune
 start.sh / stop.sh    server lifecycle
-status.sh             config, process, live health, API key
+status.sh             live dashboard (--once / --json for scripts)
+lib/dashboard.py      metrics collection and TUI rendering
 lib/common.sh         config loading, memory math, health helpers
 lib/fetch-model.sh    resumable HF downloader, no pip dependency
 bench/bench.sh        sweep / tune entrypoint

@@ -43,6 +43,7 @@ case "$BATCHING_PRESET" in solo|latency|agent|throughput) ;;
 esac
 case "$FAN_MODE" in default|smart|max) ;; *) die "FAN_MODE=\"$FAN_MODE\" is not one of default | smart | max" ;; esac
 case "$SSD_SESSION_CACHE" in on|off|write-only) ;; *) die "SSD_SESSION_CACHE=\"$SSD_SESSION_CACHE\" is not one of on | off | write-only" ;; esac
+case "$PRESERVE_THINKING" in auto|on|off|scoped) ;; *) die "PRESERVE_THINKING=\"$PRESERVE_THINKING\" is not one of auto | on | off | scoped" ;; esac
 
 # A depth of 0 or an explicit --no-mtp means plain autoregressive decoding.
 # On Apple Silicon that is roughly a 3x slowdown, so warn loudly.
@@ -111,6 +112,7 @@ fi
 
 (( NEED_KEY )) && ARGS+=( --api-key-file "$API_KEY_FILE" )
 (( RATE_LIMIT > 0 )) && ARGS+=( --rate-limit "$RATE_LIMIT" )
+ARGS+=( --preserve-thinking "$PRESERVE_THINKING" )
 [[ "$FAN_MODE" != "default" ]] && ARGS+=( --fan-mode "$FAN_MODE" )
 (( PREFILL_CHUNK_TOKENS > 0 )) && ARGS+=( --prefill-chunk-tokens "$PREFILL_CHUNK_TOKENS" )
 
@@ -156,7 +158,7 @@ log "  model        $MODEL_REPO"
 log "  weights      $MODEL_DIR"
 log "  context      $CONTEXT_WINDOW tokens      (KV: $KV_QUANT)"
 log "  MTP depth    $EFFECTIVE_DEPTH              (profile: $PROFILE)"
-log "  thinking     $THINKING"
+log "  thinking     $THINKING   (history: $PRESERVE_THINKING)"
 log "  memory cap   ${MEMORY_LIMIT_GB} GB"
 if (( SESSION_BANK_GB > 0 )); then
   log "  session bank ${SESSION_BANK_GB} GB   (prefix cache for repeat turns)"

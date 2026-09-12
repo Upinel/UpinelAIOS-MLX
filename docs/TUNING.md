@@ -153,6 +153,34 @@ at the same rate as answer tokens and are pure overhead for a tool-calling loop.
 The model's own chat template supports `low | medium | xhigh`; `high` is mapped
 to `xhigh`.
 
+### Reasoning history — the knob nobody expects to matter
+
+```conf
+PRESERVE_THINKING="scoped"   # default
+```
+
+MTPLX defaults to `auto`, which for this model resolves to **preserving all
+thinking forever**. Every turn then re-sends the model's complete reasoning
+transcript. Measured on a real agent session on this machine:
+
+| prompt tokens | reasoning history in prompt | decode |
+|---:|---:|---:|
+| 934 | 0 chars | 22.4 t/s |
+| 33,434 | 31,897 chars | 12.7 t/s |
+| 34,500 | 34,781 chars | **11.3 t/s** |
+
+Roughly 35,000 characters — about 10,000 tokens — of *finished* reasoning were
+being carried on every request, halving decode speed. That is pure waste: the
+model already thought those thoughts and committed the conclusions.
+
+`scoped` keeps reasoning only inside the active agent round, which is the
+contract the model was trained on, so answer quality is preserved while the
+history stops growing without bound. Set it to `on` if you explicitly want the
+full transcript preserved (some workflows do), or `off` to strip it entirely.
+
+This one setting is worth more than most decode-side tuning, and it costs
+nothing to enable.
+
 ### Prompt caching — the sleeper win for agents
 
 ```conf

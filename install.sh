@@ -166,7 +166,7 @@ step "Install complete"
 cat <<EOF
 
   Start the server:      ./start.sh
-  Check it:              ./status.sh
+  Watch it live:         ./status.sh
   Verify tool calling:   ./bench/verify-tools.sh
   Measure tok/s:         ./bench/bench.sh
   Re-tune MTP depth:     ./bench/bench.sh --tune

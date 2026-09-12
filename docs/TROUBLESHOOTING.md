@@ -3,9 +3,15 @@
 ## First move, always
 
 ```bash
-./status.sh                    # config, process, live /health, API key
+./status.sh                    # live dashboard: CPU, GPU, memory, activity
+./status.sh --once             # same thing as a plain summary, for logs
 tail -n 60 run/server.log      # what the server actually said
 ```
+
+The dashboard's `MEMORY` column is the fastest way to spot trouble: if `wired`
+is above ~40 GB or `free` is under ~3 GB, you are in the swap zone described
+below. The `RECENT REQUESTS` table shows decode rate per request, which makes a
+collapsing throughput obvious at a glance.
 
 `run/server.log` is the whole story. Every failure below was diagnosed from it.
 
