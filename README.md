@@ -496,14 +496,43 @@ per model.
 > mtplx inspect <model-dir> --json    # look for "can_run": true
 > ```
 
-**On Gemma 4.** It is not in the list because no uncensored Gemma 4 pack with a
-working MTP head exists for MTPLX. The abundant uncensored Gemma 4 releases —
-HauhauCS, heretic, abliterated — are GGUF for llama.cpp, and the MLX
-conversions carry neither MTP weights nor a runtime contract, so MTPLX would
-run them autoregressive-only at roughly a third of the speed. Adding one would
-mean offering a suggestion that underperforms this bundle's whole premise. If
-you want Gemma 4 uncensored, use llama.cpp directly; it is a different stack,
-not a different setting here.
+**On Gemma 4 — verified, and the answer is no.** Gemma 4 is not in the list and
+cannot be, for a structural reason rather than an oversight.
+
+Gemma 4 does not use an MTP head. MTPLX drives it through a **target/assistant
+pair**: a `target/` folder holding the verifier model and an `assistant/` folder
+holding a separately-trained drafter, bound together by `mtplx_pair.json`. The
+only such pair that exists is built from `google/gemma-4-31B-it` plus
+`google/gemma-4-31B-it-assistant` — both Google's aligned models.
+
+Without that bundle MTPLX refuses outright. Pointed at a plain Gemma 4 MLX
+checkpoint it answers:
+
+```
+tier              no-MTP
+support_level     gemma4-pair-bundle-required
+can_run           False
+runtime_compat    incomplete-assistant-pair
+message           Gemma 4 target folder detected, but MTPLX Gemma requires the
+                  assistant-pair bundle root containing mtplx_pair.json,
+                  target/, and assistant/.
+```
+
+And no uncensored Gemma 4 has one. HauhauCS's excellent uncensored Gemma 4 line
+— 12B, 26B-A4B, 31B, E4B, E2B — is **GGUF only**, shipped with a separate MTP
+file for llama.cpp's own speculative decoding. The uncensored Gemma 4 MLX
+conversions that exist (heretic, abliterated) are plain single-model
+conversions: no assistant, no pair manifest, no runtime contract.
+
+Building a pair for an uncensored target would mean converting Google's
+assistant into MTPLX's format — which needs custom classes, since stock
+`mlx_lm.convert` does not support `model_type=gemma4_assistant` — and then
+running it against a target it was never trained for. That is a Forge project,
+not a setting, and the acceptance rate would suffer for exactly the reason the
+pair exists.
+
+**So: uncensored Gemma 4 belongs to llama.cpp in this bundle's world.** It is a
+different stack, not a different line in `env.conf`.
 
 ```bash
 ./model_download.sh                # what is available, what you have

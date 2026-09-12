@@ -88,6 +88,31 @@ MODEL="moe"
 
 Everything else on this list is worth single-digit percent by comparison.
 
+### Gemma 4 — why it is absent
+
+Gemma 4 has no MTP head. MTPLX drives it with a **target/assistant pair**: a
+`target/` verifier plus an `assistant/` drafter bound by `mtplx_pair.json`. The
+only pair that exists pairs `google/gemma-4-31B-it` with
+`google/gemma-4-31B-it-assistant` — both aligned.
+
+Pointed at a plain Gemma 4 MLX checkpoint MTPLX refuses:
+
+```
+tier              no-MTP
+support_level     gemma4-pair-bundle-required
+can_run           False
+message           Gemma 4 target folder detected, but MTPLX Gemma requires the
+                  assistant-pair bundle root ...
+```
+
+HauhauCS's uncensored Gemma 4 line (12B, 26B-A4B, 31B, E4B, E2B) is GGUF only,
+with a separate MTP file for llama.cpp. No uncensored Gemma 4 carries an
+assistant pair, and pairing one with Google's assistant would mean running a
+drafter against a target it was never trained for.
+
+If you want uncensored Gemma 4, that is a llama.cpp deployment, not a
+`MODEL=` change here.
+
 ### Checking a model before you download it
 
 ```bash
