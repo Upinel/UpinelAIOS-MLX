@@ -31,6 +31,19 @@ require_bin mtplx "Run ./install.sh first, or: brew install youssofal/mtplx/mtpl
 
 EFFECTIVE_DEPTH="$(effective_depth)"
 
+# Validate enum settings up front, so a typo fails before we check the port or
+# load 15 GB of weights.
+THINKING_ARGS="$(thinking_flags)"
+case "$KV_QUANT" in off|q8|q4) ;; *) die "KV_QUANT=\"$KV_QUANT\" is not one of off | q8 | q4" ;; esac
+case "$PROFILE" in turbo|sustained|stable|exact|performance-cold|max-diagnostic) ;;
+  *) die "PROFILE=\"$PROFILE\" is not a valid MTPLX profile." ;;
+esac
+case "$BATCHING_PRESET" in solo|latency|agent|throughput) ;;
+  *) die "BATCHING_PRESET=\"$BATCHING_PRESET\" is not one of solo | latency | agent | throughput" ;;
+esac
+case "$FAN_MODE" in default|smart|max) ;; *) die "FAN_MODE=\"$FAN_MODE\" is not one of default | smart | max" ;; esac
+case "$SSD_SESSION_CACHE" in on|off|write-only) ;; *) die "SSD_SESSION_CACHE=\"$SSD_SESSION_CACHE\" is not one of on | off | write-only" ;; esac
+
 # A depth of 0 or an explicit --no-mtp means plain autoregressive decoding.
 # On Apple Silicon that is roughly a 3x slowdown, so warn loudly.
 if [[ "$EFFECTIVE_DEPTH" == "0" ]]; then
@@ -102,7 +115,7 @@ fi
 (( PREFILL_CHUNK_TOKENS > 0 )) && ARGS+=( --prefill-chunk-tokens "$PREFILL_CHUNK_TOKENS" )
 
 # shellcheck disable=SC2206
-ARGS+=( $(thinking_flags) )
+ARGS+=( $THINKING_ARGS )
 
 # Memory ceilings. MTPLX otherwise defaults to 75% of physical RAM for the
 # allocator and 60% for wired pages, which is already sane; these let env.conf
