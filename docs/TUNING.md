@@ -166,6 +166,52 @@ at the same rate as answer tokens and are pure overhead for a tool-calling loop.
 The model's own chat template supports `low | medium | xhigh`; `high` is mapped
 to `xhigh`.
 
+### Why "low" thinking still overthinks, and what to do
+
+```conf
+THINKING="off"     # default
+```
+
+The four levels are not a smooth dial. Reading the model's chat template:
+
+| Setting | What the model is actually told |
+|---|---|
+| `off` | not to think at all |
+| `low` | *"Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration."* |
+| `medium` | **nothing.** Only `xhigh` and `low` have instruction text; `medium` sends an empty string and the model thinks freely. |
+| `high` | maps to the model's `xhigh` |
+
+Two consequences worth knowing:
+
+1. **`medium` is not a middle setting.** It is "unconstrained", and in practice
+   it produced *more* thinking than `low`, not less. If you reached for it
+   hoping for a balance between `low` and `high`, there isn't one.
+2. **`low` is a soft nudge, not a constraint.** The model can and does ignore
+   it on anything it finds interesting.
+
+Measured on a trivial question ("what is 17 × 23?"):
+
+| Setting | completion tokens | of which reasoning |
+|---|---:|---:|
+| `off` | 4 | 0 |
+| `low` | 62 | 55 |
+| `medium` | 63 | 56 |
+
+Fifty-five wasted tokens on a multiplication, generated at full decode cost.
+For an agent that is about to call a tool, that is pure latency.
+
+**Use `off` for agent and tool work.** Reserve `low` or `high` for tasks where
+the model genuinely has to reason, and accept the cost.
+
+A client can override this per request without a server restart:
+
+```json
+{"chat_template_kwargs": {"enable_thinking": false}}
+```
+
+Verified working against this endpoint. That lets one agent run with thinking
+off while another, doing harder work, keeps it on.
+
 ### Reasoning history — the knob nobody expects to matter
 
 ```conf

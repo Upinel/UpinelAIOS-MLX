@@ -31,6 +31,85 @@ as it found it.
 
 ---
 
+## Requirements
+
+| | |
+|---|---|
+| **Minimum** | Apple Silicon Mac, **32 GB** unified memory, macOS 14+, ~25 GB free disk |
+| **Recommended** | **64 GB** or more, for 128K context with headroom for a normal desktop |
+| **Chip** | Any M-series. Speed scales with memory bandwidth, not core count. |
+
+32 GB is genuinely usable — a 4-bit 27B is 15 GB, and the model only caches KV
+on 16 of its 64 layers, so context is cheap. What you give up is context length
+and headroom: set `MEMORY_LIMIT_GB=24` and `CONTEXT_WINDOW=65536` there, and
+expect the machine to be busy while it serves. `install.sh` scans your hardware
+and proposes exactly these numbers for you.
+
+64 GB is the comfortable target: 15 GB of weights, 4–8 GB of KV at 128K, and
+plenty left for macOS, your editor and a browser. That is what this was built
+and measured on.
+
+Disk: roughly 25 GB per model. The 4-bit build is 15 GB, the 6-bit 23 GB.
+
+## Estimated throughput
+
+**Measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), 4-bit
+27B, MTP depth 2:
+
+| context | decode | note |
+|---:|---:|---|
+| ~400 tokens | **42–51 t/s** | short turns, cool machine, tuned |
+| ~1,000 tokens | **21–24 t/s** | typical single agent request |
+| ~2,500 tokens | **37 t/s** | |
+| ~10,000 tokens | **17 t/s** | long agent turn, long output |
+| autoregressive, no MTP | 15 t/s | what you get if MTP is off |
+
+Throughput is dominated by **context length**, not by tuning. The same machine
+gives 51 t/s on a short prompt and 17 t/s on a long one.
+
+**Estimated** for other Macs, scaled by memory bandwidth and cross-checked
+against published MTPLX figures. Treat these as order-of-magnitude:
+
+| Mac | short-context decode | at ~10k context |
+|---|---:|---:|
+| M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
+| M3 / M4 base | 25–35 t/s | 10–15 t/s |
+| M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
+| **M5 Pro** (measured) | **42–51 t/s** | **17 t/s** |
+| M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
+| M3 Ultra | 60–75 t/s | 22–28 t/s |
+
+The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
+suggests — roughly 51 → 59 t/s on published figures. Beyond a point this model
+stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×.
+
+### Can it reach 75 t/s?
+
+**Not with this model.** The ceiling is arithmetic, not tuning:
+
+- The 27B is dense, so every token reads all ~15 GB of 4-bit weights.
+- Measured autoregressive rate is 15 t/s, which implies ~228 GB/s of effective
+  bandwidth — already close to what an M5 Pro can sustain.
+- MTP is what beats that limit: it verifies several drafted tokens per weight
+  read. At depth 2 with ~98% acceptance that is ~3 tokens per pass, giving
+  ~45–51 t/s. That is where the measurement lands.
+- 75 t/s would need ~5 tokens per pass. Draft acceptance decays sharply with
+  depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not viable.
+
+**But 75+ t/s is reachable — with a different model.** A mixture-of-experts
+checkpoint only computes its active parameters per token. `Qwen3.6-35B-A3B`
+has 35B total but **3B active**, so each token reads roughly a tenth as many
+weights:
+
+```conf
+MODEL="Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed"   # 21 GB, MoE 3B active
+```
+
+This is the right trade if raw speed matters more than a dense 27B's quality.
+The cost is disk and load time (21 GB), not memory bandwidth.
+
+---
+
 ## Quick start
 
 ```bash
@@ -316,11 +395,18 @@ tested aliases:
 
 | alias | size | repo | notes |
 |---|---:|---|---|
-| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` | **default**, fastest, uncensored |
+| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` | **default**, uncensored, best dense quality/speed |
 | `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` | same fine-tune, higher fidelity |
 | `4bit-opus` | 17 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit` | different fine-tune, agent-focused |
 | `6bit-opus` | 24 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit` | as above, higher fidelity |
+| `moe` | 21 GB | `Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed` | **fastest by far.** MoE, 3B active per token |
+| `9b` | 6 GB | `Youssofal/Qwen3.5-9B-MTPLX-Optimized-Speed` | small-Mac option, fits 32 GB easily |
 | `official` | 20 GB | `Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed` | **aligned, not uncensored**; only one with vision |
+
+`moe` is the answer if you want 75+ t/s. A dense 27B reads all 15 GB of weights
+for every token; the MoE reads only its 3B active slice, so it is several times
+faster for the same memory footprint. The `9b` and `official` entries are
+Qwen's aligned models, not uncensored.
 
 The settings you are most likely to touch:
 
@@ -346,21 +432,35 @@ after a two-minute load.
 
 ## Making it faster
 
-In rough order of payoff for agent work:
+Ordered by what actually moves the numbers, based on measurement rather than
+convention:
 
-1. **`THINKING="off"`** for tool-calling loops. Thinking tokens are generated at
-   the same speed as answer tokens and are pure latency for an agent that just
-   needs to call a tool. This is usually a 2–5× wall-clock win, and it is not a
-   decode-speed change at all — which is why it is easy to overlook.
-2. **Keep prefixes stable.** The server caches committed session prefixes and
-   spills them to SSD. An agent that injects a timestamp or reorders its system
-   prompt every turn invalidates that cache and re-prefills the whole context.
-3. **Re-tune MTP depth** (`./bench/bench.sh --tune`) — worth a few percent.
-4. **`KV_QUANT="off"`** if you have RAM to spare and want the compiled-verify
-   fast path back.
-5. **`FAN_MODE="smart"`** for long runs; a laptop will thermally throttle.
+1. **Keep contexts short.** This is by far the biggest lever — 51 t/s at 400
+   tokens against 17 t/s at 10,000 on the same machine. Use retrieval and
+   targeted file reads instead of loading whole repositories. Nothing else on
+   this list comes close.
 
----
+2. **Turn thinking off** (`THINKING="off"`, the default). On a trivial question
+   that is 4 output tokens instead of 62, and thinking tokens are generated at
+   the same speed as answer tokens. See [docs/TUNING.md](docs/TUNING.md) for why
+   `"low"` does not reliably reduce it.
+
+3. **Keep prefixes stable so the cache hits.** A shared prefix prefilled at
+   5,857 t/s against 444 t/s cold in testing. An agent that injects a timestamp
+   or reorders its system prompt every turn throws that away.
+
+4. **Re-tune MTP depth** (`./bench/bench.sh --tune`) — worth a few percent, and
+   the optimum is machine-specific.
+
+5. **Switch to the MoE model** if you want a step change rather than a few
+   percent. This is the only lever here that changes the order of magnitude.
+
+6. **`FAN_MODE="smart"`** for long runs. A MacBook decoding for seven minutes
+   straight will throttle; the dashboard's throughput chart makes it visible.
+
+Be sceptical of tuning folklore beyond this list. `KV_QUANT`, batching presets
+and stream intervals are real, but each is worth single-digit percent, while
+context length and model choice are worth multiples.
 
 ## Benchmarking
 

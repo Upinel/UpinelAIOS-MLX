@@ -47,7 +47,7 @@ show_usage() {
 #
 # NOTE: a case statement, not an associative array. macOS ships bash 3.2,
 # which has no `declare -A`, and this bundle must run on a stock Mac.
-MODEL_ALIASES="4bit 6bit 4bit-opus 6bit-opus official"
+MODEL_ALIASES="4bit 6bit 4bit-opus 6bit-opus official moe 9b"
 
 model_repo_for() {
   case "$1" in
@@ -56,6 +56,8 @@ model_repo_for() {
     4bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit" ;;
     6bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit" ;;
     official)   echo "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" ;;
+    moe)        echo "Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed" ;;
+    9b)         echo "Youssofal/Qwen3.5-9B-MTPLX-Optimized-Speed" ;;
     */*)        echo "$1" ;;
     *)          die "MODEL=\"$1\" is neither a known alias nor an owner/name repo id.
     Known aliases: $MODEL_ALIASES" ;;
@@ -72,7 +74,7 @@ load_config() {
   CONTEXT_WINDOW=131072
   MAX_RESPONSE_TOKENS=32768
   KV_QUANT="q8"
-  THINKING="low"
+  THINKING="off"
   PRESERVE_THINKING="scoped"
   MTP_DEPTH="auto"
   PROFILE="turbo"
