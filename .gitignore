@@ -1,0 +1,13 @@
+
+# Model weights are never committed - fetch them with ./install.sh
+# local A/B and benchmark outputs
+# mtplx tune/bench artefacts land here when run from the repo root
+*.gguf
+*.log
+*.pid
+*.safetensors
+.DS_Store
+__pycache__/
+models/
+outputs/
+run/

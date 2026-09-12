@@ -1,0 +1,77 @@
+MIT License
+
+Copyright (c) 2026 M5 Pro Qwen Agent contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-party notices
+
+This repository contains installation glue and documentation only. It does not
+vendor or redistribute any third-party software or model weights; `install.sh`
+downloads them from their upstream sources, which remain governed by their own
+licences.
+
+### MTPLX
+
+The runtime this bundle drives is [MTPLX](https://github.com/youssofal/MTPLX),
+licensed Apache-2.0 by Youssof Altoukhi, **with a mandatory attribution
+requirement**. MTPLX's NOTICE states that any product, app, or service built on
+it must display the following inside the product itself, somewhere a user can
+see it (about screen, credits, settings, shipped docs, or a CLI startup banner):
+
+> Powered by MTPLX
+> https://github.com/youssofal/MTPLX
+
+A mention in a repository or on a website does **not** satisfy this. If you
+build something on this bundle that other people use, honour that requirement.
+
+The exact wording and the full terms are in MTPLX's `NOTICE` file, which is
+carried by every copy under Apache-2.0 section 4(d). The reference to MTPLX
+above is an acknowledgement, not a substitute for reading it.
+
+### Model weights
+
+`sentence-transformers`-style licence inheritance does not apply here; the
+weights are independent works:
+
+| Artifact | Licence |
+|---|---|
+| `Qwen/Qwen3.8-27B` (base model) | Apache-2.0 |
+| HauhauCS Aggressive uncensored fine-tunes | Apache-2.0 (per upstream model card) |
+| `itrejomx/*-MTPLX-4bit` / `-6bit` MLX conversions | Apache-2.0 (community conversion; the author notes it is not an official HauhauCS release) |
+
+The community conversions are exactly that — community conversions, not signed
+upstream releases. Upstream HauhauCS releases carry Ed25519-signed manifests;
+these do not. That is a provenance statement, not a legal one.
+
+### Other components referenced
+
+- [MLX](https://github.com/ml-explore/mlx) and
+  [mlx-lm](https://github.com/ml-explore/mlx-lm) — MIT
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — MIT (discussed in the
+  research docs; not used by the default configuration)
+- [Homebrew](https://brew.sh) — BSD-2-Clause
+
+### Uncensored models
+
+The default model is an uncensored fine-tune. It will comply with requests that
+a safety-tuned model would refuse. You are responsible for what you serve and to
+whom, and for the security of the LAN endpoint this bundle exposes.
