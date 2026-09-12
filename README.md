@@ -32,9 +32,6 @@ as it found it.
 ---
 
 ## Requirements
-
-| | |
-|---|---|
 | **Minimum** | Apple Silicon Mac, **32 GB** unified memory, macOS 14+, ~25 GB free disk |
 | **Recommended** | **64 GB** or more, for 128K context with headroom for a normal desktop |
 | **Chip** | Any M-series. Speed scales with memory bandwidth, not core count. |
