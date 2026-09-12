@@ -20,8 +20,10 @@ ENV_FILE="$REPO_DIR/env.conf"
 if [[ -t 1 ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
   C_RED=$'\033[31m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_BLUE=$'\033[34m'
+  C_CYAN=$'\033[36m'; C_MAGENTA=$'\033[35m'
 else
   C_RESET=''; C_BOLD=''; C_DIM=''; C_RED=''; C_GREEN=''; C_YELLOW=''; C_BLUE=''
+  C_CYAN=''; C_MAGENTA=''
 fi
 
 log()   { printf '%s\n' "$*"; }
@@ -42,25 +44,47 @@ show_usage() {
 }
 
 # ── config ───────────────────────────────────────────────────────────────────
-# Model aliases. MODEL in env.conf may be either one of these short keys or a
-# full Hugging Face repo id -- any MTPLX-format repo with a working MTP head.
+# Model registry.
+#
+# EVERY entry here is an uncensored fine-tune. That is a deliberate product
+# rule, not a coincidence: UpinelAIOS does not ship or suggest aligned models.
+# Each one is an MLX conversion packaged for MTPLX with a verified MTP head,
+# which is what makes the speculative decoding worth having.
+#
+#   alias      size    repo
+#   ---------  ------  -------------------------------------------------------
+#   4bit       15 GB   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+#   6bit       23 GB   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit
+#   27b-3bit   14 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit
+#   27b-4bit   17 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit
+#   9b          6 GB   Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX
+#
+# Nothing smaller than 9B is listed because a 27B is what this bundle is built
+# and measured around; smaller uncensored MTPLX packs exist if you want to try
+# one, and any owner/name repo id is accepted.
 #
 # NOTE: a case statement, not an associative array. macOS ships bash 3.2,
 # which has no `declare -A`, and this bundle must run on a stock Mac.
-MODEL_ALIASES="4bit 6bit 4bit-opus 6bit-opus official moe 9b"
+MODEL_ALIASES="4bit 6bit 27b-3bit 27b-4bit 9b"
 
 model_repo_for() {
   case "$1" in
-    4bit)       echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit" ;;
-    6bit)       echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit" ;;
-    4bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit" ;;
-    6bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit" ;;
-    official)   echo "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" ;;
-    moe)        echo "Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed" ;;
-    9b)         echo "Youssofal/Qwen3.5-9B-MTPLX-Optimized-Speed" ;;
-    */*)        echo "$1" ;;
-    *)          die "MODEL=\"$1\" is neither a known alias nor an owner/name repo id.
+    4bit)      echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit" ;;
+    6bit)      echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit" ;;
+    27b-3bit)  echo "barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit" ;;
+    27b-4bit)  echo "barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit" ;;
+    9b)        echo "Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX" ;;
+    */*)       echo "$1" ;;
+    *)         die "MODEL=\"$1\" is neither a known alias nor an owner/name repo id.
     Known aliases: $MODEL_ALIASES" ;;
+  esac
+}
+
+# Is this alias/repo one we have measured and endorse?
+model_is_known_alias() {
+  case "$1" in
+    4bit|6bit|27b-3bit|27b-4bit|9b) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -74,7 +98,9 @@ load_config() {
   CONTEXT_WINDOW=131072
   MAX_RESPONSE_TOKENS=32768
   KV_QUANT="q8"
-  THINKING="off"
+  THINKING="minimal"
+  THINKING_BUDGET_TOKENS=0
+  THINKING_NOVELTY_CLOSE=1
   PRESERVE_THINKING="scoped"
   MTP_DEPTH="auto"
   PROFILE="turbo"
@@ -104,7 +130,7 @@ load_config() {
   MODEL_DIR="$MODELS_DIR/${MODEL_REPO//\//--}"
   export MODEL MODEL_REPO MODEL_DIR MODELS_DIR CONTEXT_WINDOW MAX_RESPONSE_TOKENS
   export KV_QUANT THINKING MTP_DEPTH PROFILE BATCHING_PRESET MAX_CONCURRENT
-  export PRESERVE_THINKING
+  export PRESERVE_THINKING THINKING_BUDGET_TOKENS THINKING_NOVELTY_CLOSE
   export MEMORY_LIMIT_GB WIRED_LIMIT_GB SESSION_BANK_GB MLX_CACHE_LIMIT_GB
   export HOST PORT API_KEY_FILE SERVED_MODEL_NAME FAN_MODE LOG_FILE
 }
@@ -347,15 +373,95 @@ diff_config_snapshot() {
 }
 
 # ── argument builders ────────────────────────────────────────────────────────
-# Translate THINKING=<off|low|medium|high> into MTPLX reasoning flags.
-thinking_flags() {
-  case "$THINKING" in
-    off)    echo "--reasoning off" ;;
-    low)    echo "--reasoning on --reasoning-effort low" ;;
-    medium|mid) echo "--reasoning on --reasoning-effort medium" ;;
-    high)   echo "--reasoning on --reasoning-effort high" ;;
-    *)      die "THINKING=\"$THINKING\" is not one of off | low | medium | high" ;;
+# Thinking levels, cheapest first. MTPLX's own chat template only distinguishes
+# low/medium/xhigh, and "low" is a soft nudge the model ignores. What actually
+# bounds it is MTPLX's thinking guard: a token budget, plus a novelty close that
+# ends thinking early once it stops saying anything new.
+#
+#   off      no thinking at all
+#   minimal  answer first, think only if forced. The default.
+#   low      brief thinking, hard-capped
+#   medium   more room, still capped
+#   high     no budget (the model's xhigh)
+thinking_level_ok() {
+  case "$1" in off|minimal|low|medium|high) return 0 ;; *) return 1 ;; esac
+}
+
+# Default thinking-token budget per level. 0 means unlimited.
+thinking_budget_for() {
+  case "$1" in
+    off)     echo 0 ;;
+    minimal) echo 128 ;;
+    low)     echo 512 ;;
+    medium)  echo 2048 ;;
+    high)    echo 0 ;;
+    *)       echo 512 ;;
   esac
+}
+
+# Template effort level to ask the model for, per our level.
+thinking_effort_for() {
+  case "$1" in
+    high) echo xhigh ;;
+    medium) echo medium ;;
+    *) echo low ;;
+  esac
+}
+
+# Translate THINKING into MTPLX reasoning flags.
+thinking_flags() {
+  thinking_level_ok "$THINKING" || die "THINKING=\"$THINKING\" is not one of off | minimal | low | medium | high"
+  if [[ "$THINKING" == "off" ]]; then
+    echo "--reasoning off"
+  else
+    echo "--reasoning on --reasoning-effort $(thinking_effort_for "$THINKING")"
+  fi
+}
+
+# Export the thinking guard limits for the level that will be launched.
+apply_thinking_budget_env() {
+  local budget="$THINKING_BUDGET_TOKENS"
+  [[ "$budget" == "0" ]] && budget="$(thinking_budget_for "$THINKING")"
+  if [[ "$THINKING" == "off" ]]; then
+    unset MTPLX_THINKING_BUDGET MTPLX_THINKING_NOVELTY_CLOSE
+    return 0
+  fi
+  if (( budget > 0 )); then
+    export MTPLX_THINKING_BUDGET="$budget"
+    # End thinking early once it stops producing new content, so a capped run
+    # does not merely truncate mid-thought.
+    export MTPLX_THINKING_NOVELTY_CLOSE="${THINKING_NOVELTY_CLOSE:-1}"
+  else
+    unset MTPLX_THINKING_BUDGET
+    export MTPLX_THINKING_NOVELTY_CLOSE="${THINKING_NOVELTY_CLOSE:-1}"
+  fi
+}
+
+# ── live settings (no restart needed) ───────────────────────────────────────
+# MTPLX exposes POST /v1/mtplx/settings accepting reasoning, reasoning_effort,
+# enable_thinking, depth and more. This is what makes an on-the-fly toggle
+# possible: the model stays loaded and only the decode policy changes.
+live_settings_get() {
+  local hdr; hdr="$(auth_header)"
+  curl -fsS --max-time 8 ${hdr:+-H "$hdr"} "http://127.0.0.1:${PORT}/v1/mtplx/settings" 2>/dev/null
+}
+
+live_settings_set() {
+  local json="$1"
+  local hdr; hdr="$(auth_header)"
+  curl -fsS --max-time 10 -X POST     -H "Content-Type: application/json" ${hdr:+-H "$hdr"}     -d "$json" "http://127.0.0.1:${PORT}/v1/mtplx/settings" 2>/dev/null
+}
+
+# Map a THINKING level onto the live-settings payload.
+live_thinking_payload() {
+  local level="$1"
+  thinking_level_ok "$level" || die "Unknown thinking level: $level"
+  local effort; effort="$(thinking_effort_for "$level")"
+  if [[ "$level" == "off" ]]; then
+    printf '{"reasoning":"off","enable_thinking":false}'
+  else
+    printf '{"reasoning":"on","enable_thinking":true,"reasoning_effort":"%s"}' "$effort"
+  fi
 }
 
 # Resolve MTP_DEPTH=auto against the tuned value.

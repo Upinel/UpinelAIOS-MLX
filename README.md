@@ -409,23 +409,37 @@ between an agent that is usable and one that is not.
 ## The one file you edit
 
 `env.conf` is fully commented, and `./install.sh` offers to set it for your
-machine. `MODEL` takes any MTPLX-format Hugging Face repo id, or one of five
-tested aliases:
+machine.
 
-| alias | size | repo | notes |
-|---|---:|---|---|
-| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` | **default**, uncensored, best dense quality/speed |
-| `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` | same fine-tune, higher fidelity |
-| `4bit-opus` | 17 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit` | different fine-tune, agent-focused |
-| `6bit-opus` | 24 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit` | as above, higher fidelity |
-| `moe` | 21 GB | `Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed` | **fastest by far.** MoE, 3B active per token |
-| `9b` | 6 GB | `Youssofal/Qwen3.5-9B-MTPLX-Optimized-Speed` | small-Mac option, fits 32 GB easily |
-| `official` | 20 GB | `Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed` | **aligned, not uncensored**; only one with vision |
+### Models — uncensored only
 
-`moe` is the answer if you want 75+ t/s. A dense 27B reads all 15 GB of weights
-for every token; the MoE reads only its 3B active slice, so it is several times
-faster for the same memory footprint. The `9b` and `official` entries are
-Qwen's aligned models, not uncensored.
+**Every model UpinelAIOS ships or suggests is an uncensored fine-tune.** That is
+a product rule, not a coincidence: this endpoint exists so you can run a model
+that will not refuse you, and there is no point being fast at something that
+won't answer.
+
+| alias | size | repo |
+|---|---:|---|
+| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — **default** |
+| `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` |
+| `27b-3bit` | 14 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
+| `27b-4bit` | 17 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
+| `9b` | 6 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster |
+
+Each is an MLX pack with a verified MTP head, which is what makes the
+speculative decoding work. The HauhauCS Aggressive fine-tune is the basis of
+the default.
+
+```bash
+./model_download.sh                # what is available, what you have
+./model_download.sh 9b             # download one
+./model_download.sh --switch 9b    # download if needed, switch, restart
+./start.sh --model 9b              # serve a different model for one run
+```
+
+`--switch` rewrites `MODEL` in `env.conf` and restarts; `--model` is a one-off.
+Any `owner/name` MTPLX repo id also works if you have one of your own. Downloads
+resume, so an interrupted fetch is cheap to restart.
 
 The settings you are most likely to touch:
 

@@ -6,6 +6,8 @@
 #   ./status.sh --once         one-shot summary, for scripts and logs
 #   ./status.sh --json         machine-readable snapshot
 #   ./status.sh --key          print only the API key, for scripting
+#   ./status.sh --thinking off|minimal|low|medium|high   change thinking LIVE
+#   ./status.sh --thinking     show the current thinking setting
 #   ./status.sh --interval 2   slower refresh
 #   ./status.sh --power        add real ANE/GPU power (needs passwordless sudo)
 #
@@ -25,6 +27,53 @@ case "${1:-}" in
     # Just the key, so it can be captured: export KEY=$(./status.sh --key)
     ensure_api_key
     printf '%s\n' "$API_KEY"
+    exit 0 ;;
+  --thinking)
+    # Change thinking on the fly. The model stays loaded; only the decode
+    # policy changes, so this is instant and does not disturb in-flight work.
+    require_bin curl "curl is required."
+    if ! server_healthy; then
+      die "No server answering on port $PORT. Start it with ./start.sh"
+    fi
+    if [[ -z "${2:-}" ]]; then
+      CUR="$(live_settings_get | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('unknown'); raise SystemExit
+mode = d.get('reasoning','?')
+effort = d.get('reasoning_effort') or ''
+# effort only means anything while reasoning is on
+print(mode if mode == 'off' else (mode + ' ' + effort).strip())
+" 2>/dev/null)"
+      log "  live thinking: ${C_BOLD}${CUR}${C_RESET}"
+      log "  levels: off | minimal | low | medium | high"
+      log "  ${C_DIM}restart-persistent default is THINKING=\"$THINKING\" in env.conf${C_RESET}"
+      exit 0
+    fi
+    LEVEL="$2"
+    thinking_level_ok "$LEVEL" || die "THINKING level must be off | minimal | low | medium | high"
+    RESP="$(live_settings_set "$(live_thinking_payload "$LEVEL")")"
+    if [[ -z "$RESP" ]]; then
+      die "The server rejected the change. Check run/server.log"
+    fi
+    NOW="$(printf '%s' "$RESP" | python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print('?'); raise SystemExit
+mode = d.get('reasoning','?'); effort = d.get('reasoning_effort') or ''
+print(mode if mode == 'off' else (mode + ' ' + effort).strip())
+" 2>/dev/null)"
+    ok "Thinking is now: ${C_BOLD}$NOW${C_RESET}"
+    log ""
+    case "$LEVEL" in
+      off)     log "  ${C_DIM}No thinking at all. Fastest, and the right default for tool loops.${C_RESET}" ;;
+      minimal) log "  ${C_DIM}Thinking is bounded to $(thinking_budget_for minimal) tokens with an early stop.${C_RESET}" ;;
+      low)     log "  ${C_DIM}Thinking is bounded to $(thinking_budget_for low) tokens.${C_RESET}" ;;
+      medium)  log "  ${C_DIM}Thinking is bounded to $(thinking_budget_for medium) tokens.${C_RESET}" ;;
+      high)    log "  ${C_YELLOW:-}Thinking is unbounded. Expect the slowest, most deliberative output.${C_RESET}" ;;
+    esac
+    log ""
+    log "  ${C_DIM}This is live only. To make it survive a restart, set THINKING in env.conf.${C_RESET}"
     exit 0 ;;
   *)
     ;;

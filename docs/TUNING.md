@@ -166,53 +166,72 @@ at the same rate as answer tokens and are pure overhead for a tool-calling loop.
 The model's own chat template supports `low | medium | xhigh`; `high` is mapped
 to `xhigh`.
 
-### Why "low" thinking still overthinks, and what to do
+### Thinking — five levels, and a live toggle
 
 ```conf
-THINKING="off"     # default
+THINKING="minimal"     # off | minimal | low | medium | high
 ```
 
-The four levels are not a smooth dial. Reading the model's chat template:
+The model's chat template only distinguishes `low / medium / xhigh`, and the
+`low` instruction is a *soft nudge* — the model routinely ignores it. Verified
+by reading the template: only `xhigh` and `low` carry any instruction text at
+all, and `medium` sends an empty string.
 
-| Setting | What the model is actually told |
-|---|---|
-| `off` | not to think at all |
-| `low` | *"Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration."* |
-| `medium` | **nothing.** Only `xhigh` and `low` have instruction text; `medium` sends an empty string and the model thinks freely. |
-| `high` | maps to the model's `xhigh` |
-
-Two consequences worth knowing:
-
-1. **`medium` is not a middle setting.** It is "unconstrained", and in practice
-   it produced *more* thinking than `low`, not less. If you reached for it
-   hoping for a balance between `low` and `high`, there isn't one.
-2. **`low` is a soft nudge, not a constraint.** The model can and does ignore
-   it on anything it finds interesting.
-
-Measured on a trivial question ("what is 17 × 23?"):
-
-| Setting | completion tokens | of which reasoning |
-|---|---:|---:|
-| `off` | 4 | 0 |
-| `low` | 62 | 55 |
-| `medium` | 63 | 56 |
-
-Fifty-five wasted tokens on a multiplication, generated at full decode cost.
-For an agent that is about to call a tool, that is pure latency.
-
-**Use `off` for agent and tool work.** Reserve `low` or `high` for tasks where
-the model genuinely has to reason, and accept the cost.
-
-A client can override this per request without a server restart:
+What actually bounds thinking is MTPLX's **thinking guard**, a token budget that
+closes the thinking block and forbids re-entry. UpinelAIOS turns it on; MTPLX
+ships it off by default. Measured, with tools present:
 
 ```json
-{"chat_template_kwargs": {"enable_thinking": false}}
+{"enabled": true, "budget_tokens": 128, "think_tokens": 140,
+ "engaged": "budget", "forced_emitted": 13,
+ "reentry_banned_positions": 54, "novelty_close": true}
 ```
 
-Verified working against this endpoint. That lets one agent run with thinking
-off while another, doing harder work, keeps it on.
+`engaged: "budget"` is the guard doing the work — the model did not stop on its
+own, it was stopped. `reentry_banned_positions: 54` is it being kept out of a
+second thinking block afterwards.
 
-### Reasoning history — the knob nobody expects to matter
+| level | budget | what it means |
+|---|---:|---|
+| `off` | — | no thinking at all |
+| `minimal` | ~128 tok | answer first, think only if forced. **Default.** |
+| `low` | ~512 tok | brief thinking, hard-capped |
+| `medium` | ~2048 tok | more room, still capped |
+| `high` | none | the model's own `xhigh` — it decides |
+
+Only `off` removes thinking entirely; the rest are *bounded*, which is the
+difference between asking the model to be brief and making it be brief.
+
+Two caveats worth knowing:
+
+- **The guard applies to requests that carry tools**, which is the agent case
+  and the reason it is useful here. A plain chat request with no tools is not
+  guarded.
+- **`medium` is not a middle setting** in the template sense — it differs from
+  `low` only in budget, not in what the model is asked to do.
+
+Override the per-level default with `THINKING_BUDGET_TOKENS`, or turn off the
+early stop with `THINKING_NOVELTY_CLOSE=0`.
+
+#### Changing it without a restart
+
+```bash
+./status.sh --thinking            # show the current setting
+./status.sh --thinking off        # switch live
+./status.sh --thinking minimal
+```
+
+This uses MTPLX's live settings endpoint. The model stays loaded — only the
+decode policy changes — so it is instant and does not disturb a call in flight.
+It is **not** persisted: set `THINKING` in `env.conf` to survive a restart.
+A client can also override per request:
+
+```json
+{"chat_template_kwargs": {"enable_thinking": false,
+                          "reasoning_effort": "low"}}
+```
+
+### Reasoning history — the knob nobody expects to matter### Reasoning history — the knob nobody expects to matter
 
 ```conf
 PRESERVE_THINKING="scoped"   # default

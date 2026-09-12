@@ -4,21 +4,33 @@
 #   ./start.sh                 start in the background (default)
 #   ./start.sh --foreground    run attached to this terminal (Ctrl-C to stop)
 #   ./start.sh --print         print the command it would run, then exit
+#   ./start.sh --model 9b      serve a different model for this run only
 #
 # All settings come from env.conf.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 load_config
 
-FOREGROUND=0; PRINT_ONLY=0
-for arg in "$@"; do
-  case "$arg" in
+FOREGROUND=0; PRINT_ONLY=0; MODEL_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     -f|--foreground) FOREGROUND=1 ;;
     --print)         PRINT_ONLY=1 ;;
+    --model)         MODEL_OVERRIDE="$2"; shift ;;
     -h|--help)       show_usage "$0"; exit 0 ;;
-    *) die "Unknown argument: $arg" ;;
+    *) die "Unknown argument: $1  (try --help)" ;;
   esac
+  shift
 done
+
+# A --model flag overrides env.conf for this launch only. It is not written
+# back: use ./model_download.sh --switch to make a choice permanent.
+if [[ -n "$MODEL_OVERRIDE" ]]; then
+  MODEL_REPO="$(model_repo_for "$MODEL_OVERRIDE")"
+  MODEL_DIR="$MODELS_DIR/${MODEL_REPO//\//--}"
+  export MODEL_REPO MODEL_DIR
+  info "Model override for this run: $MODEL_REPO"
+fi
 
 step "UpinelAIOS server"
 
@@ -44,6 +56,7 @@ esac
 case "$FAN_MODE" in default|smart|max) ;; *) die "FAN_MODE=\"$FAN_MODE\" is not one of default | smart | max" ;; esac
 case "$SSD_SESSION_CACHE" in on|off|write-only) ;; *) die "SSD_SESSION_CACHE=\"$SSD_SESSION_CACHE\" is not one of on | off | write-only" ;; esac
 case "$PRESERVE_THINKING" in auto|on|off|scoped) ;; *) die "PRESERVE_THINKING=\"$PRESERVE_THINKING\" is not one of auto | on | off | scoped" ;; esac
+thinking_level_ok "$THINKING" || die "THINKING=\"$THINKING\" is not one of off | minimal | low | medium | high"
 
 # A depth of 0 or an explicit --no-mtp means plain autoregressive decoding.
 # On Apple Silicon that is roughly a 3x slowdown, so warn loudly.
@@ -119,6 +132,12 @@ ARGS+=( --preserve-thinking "$PRESERVE_THINKING" )
 # shellcheck disable=SC2206
 ARGS+=( $THINKING_ARGS )
 
+# Bound how long the model may think. MTPLX's thinking guard only applies to
+# requests that carry tools, which is exactly the agent case, and it is off by
+# default - so this is what actually turns "think briefly" into a limit rather
+# than a suggestion.
+apply_thinking_budget_env
+
 # Memory ceilings. MTPLX otherwise defaults to 75% of physical RAM for the
 # allocator and 60% for wired pages, which is already sane; these let env.conf
 # pin it instead of guessing, and matter on Macs with more than 128 GB.
@@ -158,7 +177,11 @@ log "  model        $MODEL_REPO"
 log "  weights      $MODEL_DIR"
 log "  context      $CONTEXT_WINDOW tokens      (KV: $KV_QUANT)"
 log "  MTP depth    $EFFECTIVE_DEPTH              (profile: $PROFILE)"
-log "  thinking     $THINKING   (history: $PRESERVE_THINKING)"
+if [[ "$THINKING" == "off" ]]; then
+  log "  thinking     off   (history: $PRESERVE_THINKING)"
+else
+  log "  thinking     $THINKING   budget ${MTPLX_THINKING_BUDGET:-unlimited} tok   (history: $PRESERVE_THINKING)"
+fi
 log "  memory cap   ${MEMORY_LIMIT_GB} GB"
 if (( SESSION_BANK_GB > 0 )); then
   log "  session bank ${SESSION_BANK_GB} GB   (prefix cache for repeat turns)"
