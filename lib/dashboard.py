@@ -423,6 +423,22 @@ class ServerSampler:
             return None
         return None
 
+    def health(self):
+        """
+        GET /health. Cheap, and the only place the loaded model path appears -
+        the telemetry snapshot carries a model *id* (the served name) but not
+        the repo, so this is how the dashboard knows which weights are live.
+        """
+        try:
+            req = urllib.request.Request(self.root + "/health",
+                                         headers=self._headers())
+            with urllib.request.urlopen(req, timeout=4) as r:
+                data = json.loads(r.read())
+                return data if data.get("ok") else None
+        except (urllib.error.URLError, urllib.error.HTTPError,
+                json.JSONDecodeError, OSError):
+            return None
+
     def live_settings(self):
         """Current live decode policy (reasoning mode, depth, ...)."""
         try:
@@ -781,6 +797,8 @@ class Dashboard:
         self.levels = ["off", "minimal", "low", "medium", "high"]
         self._cached_thinking = None
         self._thinking_checked = 0.0
+        self._health_cache = None
+        self._switching_to = None
 
     # ── model discovery ──────────────────────────────────────────────────────
     def downloaded_models(self):
@@ -805,6 +823,33 @@ class Dashboard:
         except OSError:
             return []
         return found
+
+    def loaded_model(self):
+        """
+        The repo the server actually has loaded, from /health model_path.
+
+        The dashboard's config is a snapshot taken at launch. After an in-app
+        model switch that snapshot is stale, so anything showing "which model is
+        this" has to come from the server, not from cfg.
+        """
+        h = self._health_cache or {}
+        path = h.get("model_path") or ""
+        name = os.path.basename(path.rstrip("/"))
+        if "--" in name:
+            return name.replace("--", "/", 1)
+        return self.cfg.get("model_repo", "")
+
+    def shown_model(self):
+        """
+        What to print as the current model: the loaded one when the server is
+        up, what we are switching to while it restarts, and the configured value
+        when nothing is running.
+        """
+        if self._switching_to:
+            return self._switching_to
+        if self._health_cache:
+            return self.loaded_model()
+        return self.cfg.get("model_repo", "")
 
     def short_model(self, repo):
         """A label that fits in a footer: the tail of the repo id."""
@@ -867,6 +912,9 @@ class Dashboard:
         except OSError as exc:
             self.note(f"{RED}Could not write env.conf: {exc}{RESET}", 8)
             return
+        self._switching_to = repo
+        self._health_cache = None
+        self.note_target = repo
         try:
             subprocess.Popen([os.path.join(repo_dir, "restart.sh")],
                              stdout=subprocess.DEVNULL,
@@ -904,7 +952,7 @@ class Dashboard:
                 return
             repos = [m["repo"] for m in models]
             cur = self.pending.value if self.pending.kind == "model" \
-                else self.cfg.get("model_repo")
+                else self.shown_model()
             idx = repos.index(cur) if cur in repos else -1
             self.pending.arm("model", repos[(idx + 1) % len(repos)], from_value=cur)
         elif key in ("\r", "\n"):
@@ -992,6 +1040,14 @@ class Dashboard:
         snap = self.server.snapshot()
         s["snap"] = snap
         s["server_up"] = snap is not None
+
+        # The model identity comes from /health, not from the launch-time config:
+        # after an in-app model switch the config snapshot is stale, which is
+        # exactly why the header used to keep showing the old model.
+        health = self.server.health() if snap is not None else None
+        self._health_cache = health
+        if health and self._switching_to and self.loaded_model() == self._switching_to:
+            self._switching_to = None
         # The connection list is worth refreshing often enough to notice a new
         # client, but not every frame.
         if snap is not None and self._frame % 3 == 0:
@@ -1057,7 +1113,13 @@ class Dashboard:
         L.append(DIM + "\u2500" * width + RESET)
 
         key = cfg.get("api_key") or "(none - loopback only)"
-        L.append(f"  {DIM}model {RESET}{BOLD}{cfg['model_repo']}{RESET}")
+        shown = self.shown_model()
+        suffix = ""
+        if self._switching_to:
+            suffix = f" {YELLOW}(loading...){RESET}"
+        elif not self._health_cache:
+            suffix = f" {DIM}(configured; server not running){RESET}"
+        L.append(f"  {DIM}model {RESET}{BOLD}{shown}{RESET}{suffix}")
         L.append(f"  {DIM}served as {RESET}{CYAN}{cfg.get('served_name','')}{RESET}"
                  f"{DIM}   ctx {cfg.get('context','?')}   KV {cfg.get('kv','?')}"
                  f"   MTP d{cfg.get('depth','?')}   {cfg.get('profile','?')}{RESET}")
@@ -1336,7 +1398,7 @@ class Dashboard:
                 hint = (f"{BOLD}t{RESET}{DIM} thinking{RESET}"
                         f"{CYAN}={self._live_thinking_label()}{RESET}"
                         f"   {BOLD}m{RESET}{DIM} model{RESET}"
-                        f"{CYAN}={self.short_model(self.cfg.get('model_repo',''))}{RESET}"
+                        f"{CYAN}={self.short_model(self.shown_model())}{RESET}"
                         f"   {DIM}q quit{RESET}")
             else:
                 hint = (f"refresh {self.args.interval}s \u00b7 Ctrl-C to exit"
@@ -1386,6 +1448,20 @@ class Dashboard:
                          f"frame {self._frame} ---\n{detail}")
         except OSError:
             pass
+
+    def _empty_snapshot(self):
+        """Minimal snapshot so a failed collect still yields a renderable frame."""
+        return {
+            "cpu": None, "cpu_user": None, "cpu_sys": None, "gpu": None,
+            "gpu_renderer": None, "gpu_tiler": None, "ane": None,
+            "ram_total_gb": 0.0, "ram_free_gb": 0.0, "ram_used_gb": 0.0,
+            "ram_wired_gb": 0.0, "ram_cached_gb": 0.0, "ram_compressed_gb": 0.0,
+            "ram_active_gb": 0.0, "ram_pressure_pct": 0.0, "thermal": "unknown",
+            "swap": None, "proc": None, "server_up": False, "clients": [],
+            "in_flight": [], "sessions": [], "sessions_n": 0, "lifetime": {},
+            "srv_mem": {}, "live_tps": None, "live_history": [], "rolling": {},
+            "scheduler": {}, "log_totals": None, "memory_pressure_level": None,
+        }
 
     def _fault_frame(self, s):
         """
@@ -1451,7 +1527,16 @@ class Dashboard:
     def _loop(self):
         while True:
             started = time.time()
-            s = self.collect()
+            try:
+                s = self.collect()
+            except Exception:                                  # noqa: BLE001
+                # Sampling is as capable of raising as rendering is - a probe
+                # renamed, a telemetry field that vanished. Degrade the frame
+                # rather than dying, for the same reason the render guard exists.
+                self._error_count += 1
+                self._last_error = traceback.format_exc()
+                self._log_fault(self._last_error)
+                s = self._empty_snapshot()
             self.tick()
             try:
                 frame = self.render(s)
