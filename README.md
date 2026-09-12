@@ -39,6 +39,7 @@ git clone https://github.com/upinel/UpinelAIOS && cd UpinelAIOS
 ./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
 ./status.sh           # live dashboard: CPU, GPU, memory, live decode rate
+./restart.sh          # apply an env.conf change
 ./stop.sh
 ```
 
@@ -117,8 +118,12 @@ the OpenAI Python SDK.
 | TOKEN RATE | live decode rate, charted, with min/avg/max over the window | MTPLX `rolling.live_history` |
 | TOKENS GENERATED | output, input, total and request counts | incremental scan of `run/server.log` |
 
+The full API key and the model identity are printed in the header, untruncated,
+because both are things you copy into a client.
+
 `--once` prints a plain summary for logs and scripts, `--json` a
-machine-readable snapshot, `--interval N` slows the refresh.
+machine-readable snapshot, `--key` prints only the API key (handy for
+`export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
 
 ### Two limits, stated rather than hidden
 
@@ -135,6 +140,47 @@ sudo. The GPU number needs no such compromise: IOKit publishes the GPU's own
 busy counter unprivileged. Note that counter is **system-wide**, so WindowServer
 and browser compositing are included; it answers "is the machine busy", not
 "how much is the model using".
+
+---
+
+## Changing settings
+
+`env.conf` settings are passed to the runtime as command-line arguments at
+launch, so **editing the file has no effect until you restart**. That is what
+`restart.sh` is for:
+
+```bash
+$ ./restart.sh
+UpinelAIOS restart
+
+  env.conf changed since the server last started:
+    CONTEXT_WINDOW         131072  ->  204800
+    KV_QUANT               q8  ->  off
+    THINKING               low  ->  high
+
+  left of the arrow is what is running now; right is what will start.
+
+  Starting with:
+    model      itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+    served as  Upinel-AIOS
+    context    204800   KV off   MTP depth 2
+    profile    sustained   thinking high   history scoped
+
+==> Stopping pid 78517 (SIGTERM)...
+ ok Port 8000 is free.
+==> Waiting for the port and GPU memory to settle...
+==> Loading the model - first token takes ~30-90s.
+ ok Server is up.
+```
+
+It diffs the *effective* settings, not the file, so editing a comment or
+reordering lines does not show up as a change. `--print` shows what would
+happen without doing it.
+
+The stop is graceful and the script waits for the port to free plus a few
+seconds before starting, because macOS needs a moment to release the wired GPU
+allocation — starting into a port that is still closing is the usual cause of a
+failed restart. If the graceful path hangs, `--force` sends `SIGKILL`.
 
 ---
 
@@ -333,6 +379,7 @@ under 32 generated tokens are flagged as noise.
 env.conf              the only file you edit
 install.sh            deps + model download + MTP depth tune
 start.sh / stop.sh    server lifecycle
+restart.sh            apply an env.conf change (diffs old vs new)
 status.sh             live dashboard (--once / --json for scripts)
 lib/dashboard.py      metrics collection and TUI rendering
 lib/common.sh         config loading, memory math, health helpers
@@ -343,6 +390,7 @@ bench/verify-tools.sh tool-calling diagnostic — run this if an agent misbehave
 bench/ab.sh           A/B two settings against each other
 service.sh            optional launchd login service
 lib/preflight.sh      hardware scan and per-machine configuration suggestions
+lib/diff_config.py    pairs the config diff that restart.sh prints
 docs/TUNING.md        the full performance story and every knob
 docs/TROUBLESHOOTING.md  what to do when something does not work
 docs/CLIENTS.md       connecting Open WebUI, Claude Code, Cline, Aider, SDKs

@@ -5,6 +5,7 @@
 #   ./status.sh                live dashboard (Ctrl-C to exit)
 #   ./status.sh --once         one-shot summary, for scripts and logs
 #   ./status.sh --json         machine-readable snapshot
+#   ./status.sh --key          print only the API key, for scripting
 #   ./status.sh --interval 2   slower refresh
 #   ./status.sh --power        add real ANE/GPU power (needs passwordless sudo)
 #
@@ -20,7 +21,12 @@ case "${1:-}" in
   -h|--help)
     show_usage "$0"
     exit 0 ;;
-  --once|--json|--power|--interval|*)
+  --key)
+    # Just the key, so it can be captured: export KEY=$(./status.sh --key)
+    ensure_api_key
+    printf '%s\n' "$API_KEY"
+    exit 0 ;;
+  *)
     ;;
 esac
 
@@ -34,7 +40,7 @@ print(json.dumps({
     "base": "http://127.0.0.1:${PORT}/v1",
     "lan_url": "http://$(lan_ip):${PORT}/v1",
     "api_key": open("${API_KEY_FILE}").read().strip() if os.path.exists("${API_KEY_FILE}") else "",
-    "api_key_short": (open("${API_KEY_FILE}").read().strip()[:12] + "...") if os.path.exists("${API_KEY_FILE}") else "none",
+    "api_key_file": "${API_KEY_FILE}",
     "pid_file": "${PID_FILE}",
     "log_file": "${LOG_FILE}",
     "model_dir": "${MODEL_DIR}",

@@ -170,6 +170,7 @@ cat <<EOF
   Verify tool calling:   ./bench/verify-tools.sh
   Measure tok/s:         ./bench/bench.sh
   Re-tune MTP depth:     ./bench/bench.sh --tune
+  Apply env.conf changes: ./restart.sh
   Stop it:               ./stop.sh
 
   Config lives in:       env.conf

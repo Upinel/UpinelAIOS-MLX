@@ -622,6 +622,7 @@ class Dashboard:
     def render(self, s):
         width, height = term_size()
         width = max(64, min(width, 200))
+        self._width = width
         L = []
         cfg = self.cfg
 
@@ -639,16 +640,25 @@ class Dashboard:
         L.append(f"{title}{' ' * pad}{status}  {DIM}{clock}{RESET}")
         L.append(f"{DIM}  Upinel's One-Click AI Agent Server OS for Mac{RESET}")
         L.append(DIM + "\u2500" * width + RESET)
-        L.append(f"  {DIM}{truncate(cfg['model_repo'], width - 4)}{RESET}")
-        bits = [cfg.get("profile", "?"), f"MTP d{cfg.get('depth','?')}",
-                f"think {cfg.get('thinking','?')}",
-                f"hist {cfg.get('preserve_thinking','?')}",
-                f"KV {cfg.get('kv','?')}",
-                f"ctx {cfg.get('context','?')}"]
+        # Model identity, in full and on its own line: the repo id IS the model
+        # name, and truncating it hides which weights are actually loaded.
+        L.append(f"  {DIM}model {RESET}{BOLD}{cfg['model_repo']}{RESET}")
+        if cfg.get("model") and cfg["model"] != cfg["model_repo"]:
+            L.append(f"  {DIM}      (env.conf MODEL={cfg['model']} -> "
+                     f"{cfg['model_repo']}){RESET}")
+        L.append(f"  {DIM}served as {RESET}{CYAN}{cfg.get('served_name','')}{RESET}"
+                 f"{DIM}   ctx {cfg.get('context','?')}   KV {cfg.get('kv','?')}"
+                 f"   MTP d{cfg.get('depth','?')}   profile {cfg.get('profile','?')}{RESET}")
+        bits = [f"think {cfg.get('thinking','?')}",
+                f"history {cfg.get('preserve_thinking','?')}",
+                f"{cfg.get('batching','?')} batching",
+                f"cap {cfg.get('memory_limit','?')}G"]
         L.append("  " + DIM + " \u00b7 ".join(bits) + RESET)
-        L.append(f"  {CYAN}{cfg.get('lan_url', cfg['base'])}{RESET}"
-                 f"{DIM}   model {BOLD}{cfg.get('served_name','')}{RESET}"
-                 f"{DIM}   key {cfg.get('api_key_short','')}{RESET}")
+        L.append(f"  {CYAN}{cfg.get('lan_url', cfg['base'])}{RESET}")
+        # The key is printed whole, on its own line. It is a LAN shared secret
+        # the user has to copy into clients, so eliding it helps nobody.
+        key = cfg.get("api_key") or "(none - loopback only)"
+        L.append(f"  {DIM}api key {RESET}{YELLOW}{key}{RESET}")
         L.append("")
 
         # ── host vs endpoint-process memory ──
@@ -810,6 +820,12 @@ class Dashboard:
                  f"{'' if self.power and self.power.available else ' \u00b7 --power for ANE'}"
                  f"{RESET}")
 
+        # Final safety pass: clamp every line to the terminal width. The model
+        # id and the API key are intentionally printed in full, and on a narrow
+        # terminal an unclamped line would wrap and corrupt every row below it.
+        L = [truncate(line, width) if len(strip_ansi(line)) > width else line
+             for line in L]
+
         if not ALT_SCREEN:
             body = "\n".join(strip_ansi(x) if not USE_COLOR else x for x in L)
             return body + "\n" + "\u2500" * min(width, 78) + "\n"
@@ -847,8 +863,14 @@ def print_once(cfg, snap):
     print(f"\n{BOLD}UpinelAIOS{RESET} {DIM}- "
           f"Upinel's One-Click AI Agent Server OS for Mac{RESET}\n")
 
-    print(f"{BOLD}Configuration{RESET}  (env.conf)")
-    print(f"  {'model':<18} {cfg['model_repo']}")
+    print(f"{BOLD}Model{RESET}")
+    print(f"  {'name':<18} {cfg['model_repo']}")
+    if cfg.get("model") and cfg["model"] != cfg["model_repo"]:
+        print(f"  {'env.conf MODEL':<18} {cfg['model']}")
+    print(f"  {'served as':<18} {cfg.get('served_name','')}")
+    print(f"  {'weights on disk':<18} {cfg.get('model_dir','')}")
+
+    print(f"\n{BOLD}Configuration{RESET}  (env.conf)")
     print(f"  {'context window':<18} {cfg.get('context')} tokens")
     print(f"  {'KV quant':<18} {cfg.get('kv')}")
     print(f"  {'MTP depth':<18} {cfg.get('depth')}  (profile {cfg.get('profile')})")
@@ -923,9 +945,12 @@ def print_once(cfg, snap):
     else:
         line("(none)", "no established connections")
 
+    print(f"\n{BOLD}Connect a client{RESET}")
+    print(f"  {'base URL':<18} {cfg.get('lan_url', cfg['base'])}")
+    print(f"  {'model':<18} {cfg.get('served_name','')}")
+    print(f"  {'api key':<18} {cfg.get('api_key') or '(none - loopback only)'}")
     print(f"\n  {DIM}Live dashboard:  ./status.sh{RESET}")
-    print(f"  {DIM}API key:         {cfg['api_key']}{RESET}")
-    print(f"  {DIM}LAN URL:         {cfg.get('lan_url', cfg['base'])}{RESET}\n")
+    print(f"  {DIM}Key only:        ./status.sh --key{RESET}\n")
 
 
 def print_json(cfg, snap):

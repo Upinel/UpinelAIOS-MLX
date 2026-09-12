@@ -5,6 +5,7 @@
 ```bash
 ./status.sh                    # live dashboard: CPU, GPU, memory, activity
 ./status.sh --once             # same thing as a plain summary, for logs
+./restart.sh --print           # what an env.conf change would do
 tail -n 60 run/server.log      # what the server actually said
 ```
 

@@ -65,6 +65,19 @@ mature there, and llama.cpp is easier to embed. For raw agent throughput, MLX.
 
 ---
 
+## 1a. Applying a change
+
+`env.conf` is read when the server starts and passed to the runtime as
+command-line arguments, so **an edit does nothing until you restart**:
+
+```bash
+./restart.sh            # stops, waits for the port and GPU to settle, starts
+./restart.sh --print    # show what would change, do nothing
+```
+
+`restart.sh` prints a paired diff of the *effective* settings, so you can see
+exactly what you are switching between without diffing the file yourself.
+
 ## 2. The knobs, in order of how much they matter
 
 ### MTP depth — biggest single lever (3.4× here)

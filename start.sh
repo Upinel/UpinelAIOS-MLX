@@ -182,6 +182,9 @@ if (( FOREGROUND )); then
   exec mtplx serve "${ARGS[@]}"
 fi
 
+# Record the effective config so ./restart.sh can report what changed.
+save_config_snapshot
+
 info "Loading the model - first token takes ~30-90s. Logs: $LOG_FILE"
 # Rotate the previous log so a long-running service cannot fill the disk.
 if [[ -f "$LOG_FILE" ]]; then

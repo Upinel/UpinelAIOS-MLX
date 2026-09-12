@@ -263,6 +263,57 @@ model_weight_gb() {
   esac
 }
 
+# ── config identity ──────────────────────────────────────────────────────────
+# The effective settings, independent of comments and whitespace, so that
+# editing a comment does not look like a configuration change.
+config_fingerprint() {
+  local depth; depth="$(effective_depth)"
+  printf '%s\n' \
+    "MODEL=$MODEL_REPO" \
+    "CONTEXT_WINDOW=$CONTEXT_WINDOW" \
+    "MAX_RESPONSE_TOKENS=$MAX_RESPONSE_TOKENS" \
+    "KV_QUANT=$KV_QUANT" \
+    "THINKING=$THINKING" \
+    "PRESERVE_THINKING=$PRESERVE_THINKING" \
+    "MTP_DEPTH=$depth" \
+    "PROFILE=$PROFILE" \
+    "BATCHING_PRESET=$BATCHING_PRESET" \
+    "MAX_CONCURRENT=$MAX_CONCURRENT" \
+    "STREAM_INTERVAL=$STREAM_INTERVAL" \
+    "PREFILL_CHUNK_TOKENS=$PREFILL_CHUNK_TOKENS" \
+    "SSD_SESSION_CACHE=$SSD_SESSION_CACHE" \
+    "MEMORY_LIMIT_GB=$MEMORY_LIMIT_GB" \
+    "WIRED_LIMIT_GB=$WIRED_LIMIT_GB" \
+    "SESSION_BANK_GB=$SESSION_BANK_GB" \
+    "MLX_CACHE_LIMIT_GB=$MLX_CACHE_LIMIT_GB" \
+    "HOST=$HOST" \
+    "PORT=$PORT" \
+    "SERVED_MODEL_NAME=$SERVED_MODEL_NAME" \
+    "RATE_LIMIT=$RATE_LIMIT" \
+    "FAN_MODE=$FAN_MODE" \
+    "NGRAM_PREWARM=$NGRAM_PREWARM" \
+    "WARMUP_TOKENS=$WARMUP_TOKENS"
+}
+
+CONFIG_SNAPSHOT_FILE="$RUN_DIR/config.snapshot"
+
+save_config_snapshot() {
+  mkdir -p "$RUN_DIR"
+  config_fingerprint > "$CONFIG_SNAPSHOT_FILE"
+}
+
+# Print the settings that differ from the last saved snapshot. Returns 0 if
+# there were changes, 1 if the config is identical or there is no snapshot.
+diff_config_snapshot() {
+  [[ -f "$CONFIG_SNAPSHOT_FILE" ]] || return 1
+  local changed
+  changed="$(diff <(config_fingerprint) "$CONFIG_SNAPSHOT_FILE" 2>/dev/null \
+             | grep -E '^[<>]' || true)"
+  [[ -n "$changed" ]] || return 1
+  printf '%s\n' "$changed"
+  return 0
+}
+
 # ── argument builders ────────────────────────────────────────────────────────
 # Translate THINKING=<off|low|medium|high> into MTPLX reasoning flags.
 thinking_flags() {
