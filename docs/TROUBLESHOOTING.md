@@ -81,6 +81,73 @@ Common causes:
 | `missing or invalid API key` on `/health` | You are bound to `0.0.0.0`, which always requires the key. `./status.sh` prints it. |
 | A `mtplx` command not found | `brew install youssofal/mtplx/mtplx`, or re-run `./install.sh`. |
 
+## "The model cannot create or write files"
+
+**Start here:** run the diagnostic.
+
+```bash
+./bench/verify-tools.sh
+```
+
+It checks all 13 things an agent needs — non-streaming tool calls, streaming
+tool-call deltas with indexes, argument JSON assembly, the multi-turn tool
+result round-trip, and the Anthropic `/v1/messages` `tool_use` shape. If it
+passes, the endpoint is fine and the problem is on the client side.
+
+**Understand what the model can and cannot do.** A language model has no
+filesystem. It cannot write a file; it can only *ask* the client to write one
+by emitting a tool call. Something else — your agent harness — has to receive
+that call and perform it. If you ask the model directly in a chat box to "create
+a file", the correct behaviour is for it to describe the file, not to create it.
+That is not a bug.
+
+So when file writing does not work, the failure is almost always one of these:
+
+| Check | How to confirm |
+|---|---|
+| The agent was never given a write tool | Look at the tools list in the agent's request. No `write_file`-style tool means nothing to call. |
+| The agent is pointed at the wrong endpoint | It should be the base URL from `./status.sh`, ending in `/v1`, with the API key. |
+| The agent only supports hosted providers | Some tools ignore tool calls from a local OpenAI-compatible endpoint. Check its provider docs. |
+| The reply is being truncated | If the tool call is cut off, arguments arrive as invalid JSON. See below. |
+| A middle layer strips tool calls | Proxies, gateways, and "OpenAI-compatible" shims sometimes drop `tool_calls`. |
+
+### The truncation trap, which is the one that bites
+
+Tool calls are emitted as tokens like any other output, and they are emitted
+**after** any thinking block. With `THINKING="low"` a model can spend several
+hundred tokens reasoning before it starts writing the call, and if the client's
+`max_tokens` is small the call is cut off mid-JSON. The client then sees an
+unparseable tool call and reports that the model "failed".
+
+```conf
+THINKING="off"
+```
+
+is the fix, and it is the right setting for a tool-calling loop anyway: it is
+faster, and it removes the truncation risk. If you want to keep thinking on,
+give the agent a generous `max_tokens` (2048+) instead.
+
+The diagnostic prints this hint automatically when it sees a malformed
+`arguments` string or a `finish_reason` other than `tool_calls`.
+
+### Verifying by hand
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(cat run/api-key)" \
+  -d '{
+    "model": "qwen3.8-27b-agent",
+    "messages": [{"role":"user","content":"Create /tmp/x.txt containing hi. Use the tool."}],
+    "tools": [{"type":"function","function":{
+      "name":"write_file",
+      "parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}}],
+    "max_tokens": 512
+  }'
+```
+
+A working endpoint answers with `tool_calls` and `"finish_reason":"tool_calls"`.
+
 ## Output loops, or the model will not stop
 
 This is a known pathology of reasoning models on very repetitive input, and this

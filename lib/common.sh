@@ -42,21 +42,23 @@ show_usage() {
 }
 
 # ── config ───────────────────────────────────────────────────────────────────
-# Model registry. Keys are the values accepted by MODEL= in env.conf.
+# Model aliases. MODEL in env.conf may be either one of these short keys or a
+# full Hugging Face repo id -- any MTPLX-format repo with a working MTP head.
+#
+# NOTE: a case statement, not an associative array. macOS ships bash 3.2,
+# which has no `declare -A`, and this bundle must run on a stock Mac.
+MODEL_ALIASES="4bit 6bit 4bit-opus 6bit-opus official"
+
 model_repo_for() {
   case "$1" in
-    4bit)
-      echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit" ;;
-    6bit)
-      echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit" ;;
-    6bit-gdn)
-      echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit" ;;
-    official)
-      echo "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" ;;
-    */*)
-      echo "$1" ;;                                   # a raw HF repo id
-    *)
-      die "Unknown MODEL=\"$1\". Use 4bit | 6bit | 6bit-gdn | official, or an owner/name HF repo id." ;;
+    4bit)       echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit" ;;
+    6bit)       echo "itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit" ;;
+    4bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit" ;;
+    6bit-opus)  echo "barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit" ;;
+    official)   echo "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" ;;
+    */*)        echo "$1" ;;
+    *)          die "MODEL=\"$1\" is neither a known alias nor an owner/name repo id.
+    Known aliases: $MODEL_ALIASES" ;;
   esac
 }
 
@@ -238,11 +240,24 @@ kv_kb_per_token() {
   esac
 }
 
-# On-disk / resident size of the trunk weights, in GB.
+# Size of the trunk weights in GB (whole numbers). Prefers the real on-disk
+# size so a 6-bit build or a custom repo is accounted for correctly; falls back
+# to a guess from the quant tag before the model has been downloaded.
 model_weight_gb() {
-  case "$MODEL" in
-    6bit|6bit-gdn|official) echo 23 ;;
-    *)                      echo 15 ;;
+  if [[ -n "${MODEL_DIR:-}" && -d "${MODEL_DIR:-}" ]]; then
+    local bytes
+    bytes="$(find "$MODEL_DIR" -name '*.safetensors' -type f \
+              -exec stat -f%z {} + 2>/dev/null | awk '{n+=$1} END {print n+0}')"
+    if (( bytes > 1000000000 )); then
+      echo $(( bytes / 1000000000 ))
+      return
+    fi
+  fi
+  case "${MODEL_REPO:-}" in
+    *6bit*|*6-bit*|*Q6*|*6bit*) echo 23 ;;
+    *8bit*|*8-bit*|*Q8*)        echo 30 ;;
+    *2bit*|*Q2*)                echo 9  ;;
+    *)                          echo 15 ;;
   esac
 }
 

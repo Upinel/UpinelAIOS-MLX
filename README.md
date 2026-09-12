@@ -22,16 +22,39 @@ Clone it, edit `env.conf`, run `./start.sh`. Nothing else.
 ```bash
 git clone <this repo> && cd M5Pro-QwenAgent
 
-./install.sh          # deps + ~15 GB model + measures the best MTP depth
+./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
 ./status.sh           # what is running, and the API key
 ./stop.sh
 ```
 
-`install.sh` takes 15–30 minutes, most of it downloading weights. It finishes by
-measuring your machine's optimal MTP depth, which is genuinely hardware-specific
-— do not skip that step if you have the time (`--no-tune` skips it and defaults
-to depth 3, which is safe but usually not optimal).
+`install.sh` starts by scanning your hardware — chip, GPU cores, unified memory,
+free disk — and printing a table of suggested settings for **your** Mac next to
+the current ones:
+
+```
+  SETTING                  CURRENT (env.conf)                 SUGGESTED
+  ------------------------ ---------------------------------- ----------------------------------
+  MODEL                    itrejomx/...Aggressive-MTPLX-4bit  itrejomx/...Aggressive-MTPLX-4bit
+  CONTEXT_WINDOW           262144                             131072
+  MEMORY_LIMIT_GB          8                                  48
+  SESSION_BANK_GB          32                                 8
+
+ ok Your current env.conf fits this machine (25 GB plan, 48 GB cap).
+  Apply the suggested settings to env.conf? [Y/n]
+```
+
+It explains *why* each value is suggested, only rewrites the keys that need
+changing (your comments survive), and tells you if the download will not fit on
+disk. Use `--yes` to accept non-interactively, or `--scan-only` to just look.
+If your current settings already fit, it says so and leaves them alone.
+
+After that it installs MTPLX, downloads the model with resume, and finishes by
+measuring your machine's optimal MTP depth — which is genuinely hardware-specific,
+so do not skip that step (`--no-tune` skips it and falls back to depth 3, which
+is safe but usually not optimal).
+
+Total time is 15–30 minutes, most of it the download.
 
 Point any OpenAI-compatible client at the URL `status.sh` prints. See
 [docs/CLIENTS.md](docs/CLIENTS.md) for Open WebUI, Claude Code, Cline, Aider, and
@@ -147,10 +170,22 @@ between an agent that is usable and one that is not.
 
 ## The one file you edit
 
-`env.conf` is fully commented. The settings you are most likely to touch:
+`env.conf` is fully commented, and `./install.sh` offers to set it for your
+machine. `MODEL` takes any MTPLX-format Hugging Face repo id, or one of five
+tested aliases:
+
+| alias | size | repo | notes |
+|---|---:|---|---|
+| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` | **default**, fastest, uncensored |
+| `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` | same fine-tune, higher fidelity |
+| `4bit-opus` | 17 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-4bit` | different fine-tune, agent-focused |
+| `6bit-opus` | 24 GB | `barozp/Qwen3.8-27B-Opus-Distill-v2-MTPLX-6bit` | as above, higher fidelity |
+| `official` | 20 GB | `Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed` | **aligned, not uncensored**; only one with vision |
+
+The settings you are most likely to touch:
 
 ```conf
-MODEL="4bit"              # 4bit | 6bit | 6bit-gdn | official | owner/repo
+MODEL="itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit"
 CONTEXT_WINDOW=131072     # 204800 or 262144 if you left yourself headroom
 THINKING="low"            # off | low | medium | high
 MTP_DEPTH="auto"          # auto | 1 | 2 | 3 | 0 (off)
@@ -227,6 +262,8 @@ lib/common.sh         config loading, memory math, health helpers
 lib/fetch-model.sh    resumable HF downloader, no pip dependency
 bench/bench.sh        sweep / tune entrypoint
 bench/bench.py        streaming benchmark harness
+bench/verify-tools.sh tool-calling diagnostic — run this if an agent misbehaves
+lib/preflight.sh      hardware scan and per-machine configuration suggestions
 docs/TUNING.md        the full performance story and every knob
 docs/TROUBLESHOOTING.md  what to do when something does not work
 docs/CLIENTS.md       connecting Open WebUI, Claude Code, Cline, Aider, SDKs

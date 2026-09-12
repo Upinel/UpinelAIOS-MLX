@@ -18,6 +18,43 @@ curl http://192.168.1.20:8000/v1/models -H "Authorization: Bearer $KEY"
 
 ---
 
+## Tool calling — read this before wiring up an agent
+
+The endpoint calls tools correctly in every shape an agent uses. Verify it in
+one command:
+
+```bash
+./bench/verify-tools.sh        # 13 checks, all formats
+```
+
+Output on a healthy server:
+
+```
+  2. OpenAI non-streaming tool call    [PASS] chose 'write_file'
+  3. OpenAI streaming tool call        [PASS] deltas carry an index
+  4. Multi-turn tool result            [PASS] model answers after the result
+  5. Anthropic /v1/messages tool_use   [PASS] stop_reason='tool_use'
+```
+
+**The model cannot write files by itself.** It has no filesystem. It emits a
+tool call; your harness executes it. If an agent reports that it cannot write
+files, run the diagnostic above first — if it passes, the endpoint is not the
+problem.
+
+Two settings matter for agent use:
+
+```conf
+THINKING="off"          # recommended for tool loops
+MAX_RESPONSE_TOKENS=32768
+```
+
+Thinking tokens are generated **before** the tool call and count against the
+same `max_tokens` budget. With thinking on and a small client-side budget, the
+tool call gets truncated mid-JSON and the client sees an unparseable call. Turn
+thinking off, or give the agent 2048+ tokens of headroom. Thinking off is also
+simply faster, and an agent that only needs to call a tool rarely benefits from
+it.
+
 ## Output length
 
 The server enforces `MAX_RESPONSE_TOKENS` (default 32768) as a *ceiling*. Client

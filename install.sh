@@ -1,58 +1,73 @@
 #!/usr/bin/env bash
 # One-time setup for the M5 Pro Qwen Agent bundle.
 #
-#   ./install.sh              full setup: deps + model download + speed tune
-#   ./install.sh --no-tune    skip the (slow) MTP depth measurement
-#   ./install.sh --deps-only  only install the MTPLX runtime
-#   ./install.sh --model-only only download/verify the model
+#   ./install.sh                 scan hardware, suggest settings, install
+#   ./install.sh --yes           accept the suggested settings without asking
+#   ./install.sh --no-tune       skip the (slow) MTP depth measurement
+#   ./install.sh --deps-only     only install the MTPLX runtime
+#   ./install.sh --model-only    only download and verify the model
+#   ./install.sh --scan-only     print the hardware scan and suggestions, stop
+#   ./install.sh --model REPO    use this model instead of env.conf's
+#
+# Re-running is safe: downloads resume and finished steps are skipped.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 load_config
+# shellcheck source=lib/preflight.sh
+source "$REPO_DIR/lib/preflight.sh"
 
-DO_DEPS=1; DO_MODEL=1; DO_TUNE=1
-for arg in "$@"; do
-  case "$arg" in
+DO_DEPS=1; DO_MODEL=1; DO_TUNE=1; DO_SCAN=1
+ASSUME_YES=0
+MODEL_OVERRIDE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y)     ASSUME_YES=1 ;;
+    --no-scan)    DO_SCAN=0 ;;
+    --scan-only)  DO_SCAN=1; DO_DEPS=0; DO_MODEL=0; DO_TUNE=0 ;;
     --deps-only)  DO_MODEL=0; DO_TUNE=0 ;;
-    --model-only) DO_DEPS=0;  DO_TUNE=0 ;;
+    --model-only) DO_DEPS=0; DO_TUNE=0; DO_SCAN=0 ;;
     --no-tune)    DO_TUNE=0 ;;
+    --model)      MODEL_OVERRIDE="$2"; shift ;;
     -h|--help)    show_usage "$0"; exit 0 ;;
-    *) die "Unknown argument: $arg" ;;
+    *)            die "Unknown argument: $1  (try --help)" ;;
   esac
+  shift
 done
 
 step "M5 Pro Qwen Agent - installer"
 
-# ── 0. sanity ────────────────────────────────────────────────────────────────
 is_apple_silicon || die "This bundle targets Apple Silicon Macs. Detected: $(uname -s)/$(uname -m)."
 require_macos
-RAM_GB="$(total_ram_gb)"
-GPU_CORES="$(gpu_cores)"
-info "Machine: Apple Silicon, ${RAM_GB} GB unified memory, ${GPU_CORES} GPU cores, macOS $(macos_version)"
-info "Model:   $MODEL  ->  $MODEL_REPO"
 
-if (( RAM_GB < 32 )); then
-  warn "Only ${RAM_GB} GB of unified memory. A 4-bit 27B needs ~16 GB for weights"
-  warn "plus KV cache. Consider lowering CONTEXT_WINDOW and MEMORY_LIMIT_GB in env.conf."
-fi
-
-# Headroom check: model + KV for the configured context must fit the budget.
-MODEL_GB="$(model_weight_gb)"
-KV_KB_PER_TOK="$(kv_kb_per_token)"
-KV_GB=$(( CONTEXT_WINDOW * KV_KB_PER_TOK / 1024 / 1024 ))
-NEED_GB=$(( MODEL_GB + KV_GB + 6 ))   # +6 GB for activations, vision tower, Metal scratch
-info "Budget:  ${MODEL_GB} GB weights + ${KV_GB} GB KV (${KV_QUANT}) + 6 GB overhead = ${NEED_GB} GB"
-info "Allowed: ${MEMORY_LIMIT_GB} GB"
-if (( NEED_GB > MEMORY_LIMIT_GB )); then
-  warn "Configured plan exceeds MEMORY_LIMIT_GB."
-  warn "Either lower CONTEXT_WINDOW, set KV_QUANT=q4, or raise MEMORY_LIMIT_GB in env.conf."
-  warn "Continuing anyway - start.sh will fail loudly if the model will not load."
+# ── 1. hardware scan and configuration ───────────────────────────────────────
+if (( DO_SCAN )); then
+  run_preflight "$ASSUME_YES" || die "Setup stopped. Fix the issue above and re-run ./install.sh"
+  # load_config already re-ran inside apply_config; refresh derived values.
+  MODEL_REPO="$(model_repo_for "$MODEL")"
+  MODEL_DIR="$MODELS_DIR/${MODEL_REPO//\//--}"
 else
-  ok "Fits with $(( MEMORY_LIMIT_GB - NEED_GB )) GB to spare."
+  step "Skipping the hardware scan (--model-only)"
 fi
 
-# ── 1. dependencies ──────────────────────────────────────────────────────────
+# A --model flag beats both env.conf and the scan, but is not written back:
+# it is a one-off choice for this run.
+if [[ -n "$MODEL_OVERRIDE" ]]; then
+  MODEL_REPO="$(model_repo_for "$MODEL_OVERRIDE")"
+  MODEL_DIR="$MODELS_DIR/${MODEL_REPO//\//--}"
+  info "Overriding the model for this run: $MODEL_REPO"
+  info "To make it permanent, set MODEL in env.conf."
+fi
+
+if (( DO_MODEL || DO_TUNE )); then
+  log ""
+  log "  Serving:  $MODEL_REPO"
+  log "  Context:  $CONTEXT_WINDOW tokens   KV: $KV_QUANT   profile: $PROFILE"
+fi
+
+# ── 2. dependencies ──────────────────────────────────────────────────────────
 if (( DO_DEPS )); then
-  step "1/3  Installing the MTPLX runtime"
+  step "Installing the MTPLX runtime"
 
   if command -v mtplx >/dev/null 2>&1; then
     ok "mtplx already installed: $(mtplx --version 2>/dev/null | head -1)"
@@ -62,40 +77,39 @@ if (( DO_DEPS )); then
     brew install youssofal/mtplx/mtplx
   fi
 
-  # First run bootstraps a private Python venv (a few hundred MB of wheels).
-  info "Bootstrapping the MTPLX Python runtime (first run only, may take a few minutes)..."
+  info "Bootstrapping the MTPLX Python runtime (first run only, a few minutes)..."
   mtplx --version >/dev/null 2>&1 || true
   ok "MTPLX ready: $(mtplx --version 2>/dev/null | head -1)"
 
   command -v python3 >/dev/null 2>&1 || warn "python3 not found - ./bench/bench.sh needs it."
 else
-  step "1/3  Skipping dependency install"
+  step "Skipping dependency install"
 fi
 
-# ── 2. model ─────────────────────────────────────────────────────────────────
+# ── 3. model ─────────────────────────────────────────────────────────────────
 if (( DO_MODEL )); then
-  step "2/3  Fetching $MODEL_REPO"
+  step "Fetching the model"
   "$REPO_DIR/lib/fetch-model.sh" "$MODEL_REPO" "$MODEL_DIR"
 
   info "Validating the MTPLX runtime contract..."
   if mtplx inspect "$MODEL_DIR" --require-mtp --json 2>/dev/null \
        | grep -q '"support_level": "verified-native"'; then
-    ok "Model is verified-native: MTP head present and contract matched."
+    ok "Verified-native: MTP head present and the runtime contract matches."
   else
-    warn "Model did not report verified-native. Inspect it yourself with:"
+    warn "This model did not report verified-native. Check it yourself:"
     warn "    mtplx inspect '$MODEL_DIR' --json"
-    warn "If it is only 'architecture-compatible', start.sh will need"
-    warn "MODEL_UNVERIFIED_OK=1 in env.conf, and speed is not guaranteed."
+    warn "If it only reports 'architecture-compatible', MTP speed is not guaranteed."
+    warn "Repos published through 'mtplx forge' are the ones with a verified contract."
   fi
 else
-  step "2/3  Skipping model download"
+  step "Skipping model download"
 fi
 
-# ── 3. speed tune ────────────────────────────────────────────────────────────
+# ── 4. speed tune ────────────────────────────────────────────────────────────
 if (( DO_TUNE )); then
-  step "3/3  Measuring the fastest MTP depth on THIS machine"
-  log "     This loads the model 4 times and takes 10-25 minutes."
-  log "     It writes the winner to run/tuning.json; MTP_DEPTH=auto uses it."
+  step "Measuring the fastest MTP depth on THIS machine"
+  log "     Loads the model 4 times; 10-25 minutes."
+  log "     Writes the winner to run/tuning.json, which MTP_DEPTH=auto uses."
   log ""
 
   if [[ ! -d "$MODEL_DIR" ]]; then
@@ -105,44 +119,59 @@ if (( DO_TUNE )); then
     cp "$RUN_DIR/tune.raw.json" "$TUNE_FILE"
     DEPTH="$(tuned_depth)"
     ok "Fastest MTP depth on this Mac: ${DEPTH:-unknown}"
+    python3 - "$TUNE_FILE" <<'PY' 2>/dev/null || true
+import json, sys
+d = json.load(open(sys.argv[1]))
+print()
+print("     {:>5}  {:>9}  {:>7}".format("mode", "tok/s", "vs AR"))
+for r in d.get("results", []):
+    print("     {:>5}  {:>9.2f}  {:>6.2f}x".format(
+        r["mode"], r["tok_s"], r["multiplier_vs_ar"]))
+PY
   else
     warn "Auto-tune did not complete. See $RUN_DIR/tune.err"
-    warn "The server will fall back to MTP depth 3, which is a good default."
+    warn "Falling back to MTP depth 3, which is a good default."
     tail -n 5 "$RUN_DIR/tune.err" 2>/dev/null || true
   fi
 else
-  step "3/3  Skipping speed tune (MTP depth will default to 3)"
+  step "Skipping the speed tune (MTP depth will use MTPLX's default of 3)"
 fi
 
-# ── 4. wired memory ceiling (optional) ───────────────────────────────────────
+# ── 5. optional wired-memory ceiling ─────────────────────────────────────────
 if (( WIRED_LIMIT_GB > 0 )); then
-  step "Optional: raising the macOS GPU wired-memory ceiling"
+  step "Raising the macOS GPU wired-memory ceiling"
   CURRENT_MB="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
   TARGET_MB=$(( WIRED_LIMIT_GB * 1024 ))
   if (( CURRENT_MB >= TARGET_MB )); then
     ok "Already at ${CURRENT_MB} MB (target ${TARGET_MB} MB)."
-  elif (( TARGET_MB > RAM_GB * 1024 * 90 / 100 )); then
+  elif (( TARGET_MB > HW_RAM_GB * 1024 * 90 / 100 )); then
     warn "WIRED_LIMIT_GB=${WIRED_LIMIT_GB} is over 90% of RAM. Refusing to apply."
-    warn "That configuration causes jetsam kills and can leak wired pages on a hard kill."
+    warn "That setting causes jetsam kills and can leak wired pages on a hard kill."
   else
-    warn "This needs sudo once and does NOT survive a reboot."
-    warn "Command: sudo sysctl iogpu.wired_limit_mb=${TARGET_MB}"
+    warn "Needs sudo once, and does NOT survive a reboot."
     sudo sysctl "iogpu.wired_limit_mb=${TARGET_MB}" \
       && ok "Wired limit set to ${TARGET_MB} MB for this boot." \
-      || warn "Could not set the wired limit; macOS default stands."
+      || warn "Could not set it; the macOS default stands."
   fi
 fi
 
 # ── done ─────────────────────────────────────────────────────────────────────
+if (( DO_DEPS == 0 && DO_MODEL == 0 && DO_TUNE == 0 )); then
+  step "Scan complete"
+  log "  Review env.conf, then run:  ./install.sh"
+  exit 0
+fi
+
 step "Install complete"
 cat <<EOF
 
-  Start the server:     ./start.sh
-  Check it:             ./status.sh
-  Measure tok/s:        ./bench/bench.sh
-  Re-tune MTP depth:    ./bench/bench.sh --tune
-  Stop it:              ./stop.sh
+  Start the server:      ./start.sh
+  Check it:              ./status.sh
+  Verify tool calling:   ./bench/verify-tools.sh
+  Measure tok/s:         ./bench/bench.sh
+  Re-tune MTP depth:     ./bench/bench.sh --tune
+  Stop it:               ./stop.sh
 
-  Config lives in:      env.conf
+  Config lives in:       env.conf
 
 EOF

@@ -15,7 +15,12 @@ step "Qwen3.8-27B agent endpoint - status"
 # ── configuration ────────────────────────────────────────────────────────────
 log ""
 log "${C_BOLD}Configuration${C_RESET}  (env.conf)"
-printf '  %-18s %s\n' "model"          "$MODEL  ($MODEL_REPO)"
+# MODEL may be an alias or the repo id itself; do not print it twice.
+if [[ "$MODEL" == "$MODEL_REPO" ]]; then
+  printf '  %-18s %s\n' "model" "$MODEL_REPO"
+else
+  printf '  %-18s %s\n' "model" "$MODEL  ($MODEL_REPO)"
+fi
 printf '  %-18s %s\n' "context window" "$CONTEXT_WINDOW tokens"
 printf '  %-18s %s\n' "KV quant"       "$KV_QUANT"
 printf '  %-18s %s\n' "MTP depth"      "$(effective_depth)  (MTP_DEPTH=$MTP_DEPTH)"
