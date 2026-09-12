@@ -788,12 +788,15 @@ class Dashboard:
         for i, row in enumerate(chart_rows):
             label = f"{axis_hi:>6.1f} " if i == 0 else " " * 7
             rate_lines.append(f"  {DIM}{label}{RESET}{GREEN}{row}{RESET}")
-        foot = f"{axis_lo:>6.1f} " if hist else " " * 7
-        rate_lines.append(f"  {DIM}{foot}{RESET}" +
-                          (f"{CYAN}now {now:.1f} t/s{RESET}" if now
-                           else f"{DIM}idle{RESET}"))
-        if not hist:
-            rate_lines.append(f"  {DIM}waiting for traffic{RESET}")
+        # "now" is a live sample; without history there is nothing live to
+        # report, so say so rather than echoing the last completed request.
+        if hist:
+            foot = f"{axis_lo:>6.1f} "
+            rate_lines.append(f"  {DIM}{foot}{RESET}" +
+                              (f"{CYAN}now {now:.1f} t/s{RESET}" if now
+                               else f"{DIM}idle{RESET}"))
+        else:
+            rate_lines.append(f"  {DIM}{' ' * 7}waiting for traffic{RESET}")
 
         L += two_col(rate_lines, counters, width)
         L.append("")
