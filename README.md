@@ -32,18 +32,29 @@ to change model or context, [Benchmarks](#benchmarks) for the measured numbers.
 > **Rule of thumb:** serving Qwen → this project. Serving Gemma 4, or anything
 > else in GGUF → UpinelAIOS-GGUF.
 
-A portable, one-command **Qwen3.8-27B uncensored agent endpoint** for Apple
-Silicon Macs, tuned for maximum tokens/sec and long-context agent work.
+A portable, one-command **uncensored Qwen agent endpoint** for Apple Silicon
+Macs, tuned for maximum tokens/sec and long-context agent work.
+
+The default is a **mixture-of-experts** model — 35B total, only ~3B active per
+token — because that is what makes agents fast, and agent work is what this
+serves. The dense 27B is one command away if you would rather have it.
 
 Built and measured on an **M5 Pro / 20-core GPU / 64 GB**, serving
-`itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` through
+`hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` through
 [MTPLX](https://github.com/youssofal/MTPLX):
 
 ```
-~40-53 tok/s short-context decode   (2.6-3.4x over autoregressive)
+61-83 tok/s decode                  (2.6-3.4x over autoregressive)
 128K context default, 262K capable
 OpenAI-compatible API on your LAN
 live dashboard for CPU, GPU, memory and token throughput
+```
+
+Swapping to the dense 27B, or any other model in the table below:
+
+```bash
+./model_download.sh                              # what is available
+./model_download.sh --switch 4bit                # fetch it, switch, restart
 ```
 
 Clone it, run `./install.sh`, run `./start.sh`. Nothing else.
@@ -103,7 +114,7 @@ and proposes exactly these numbers for you.
 plenty left for macOS, your editor and a browser. That is what this was built
 and measured on.
 
-Disk: roughly 25 GB per model. The dense 4-bit build is 15 GB, the 6-bit 23 GB,
+Disk: roughly 25 GB per model. The default MoE is 22 GB, the dense 4-bit 15 GB, the 6-bit 23 GB,
 the MoE 21 GB. `install.sh` downloads only the model you have selected.
 
 ## Quick start
@@ -159,7 +170,7 @@ the current ones:
 ```
   SETTING                  CURRENT (env.conf)                 SUGGESTED
   ------------------------ ---------------------------------- ----------------------------------
-  MODEL                    itrejomx/...Aggressive-MTPLX-4bit  itrejomx/...Aggressive-MTPLX-4bit
+  MODEL                    hawhyhb/...Heretic-MTPLX-4bit-FP16  hawhyhb/...Heretic-MTPLX-4bit-FP16
   CONTEXT_WINDOW           262144                             131072
   MEMORY_LIMIT_GB          8                                  48
   SESSION_BANK_GB          32                                 8
@@ -204,20 +215,25 @@ won't answer.
 
 | alias | size | repo |
 |---|---:|---|
-| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — **default** |
+| `moe` | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **DEFAULT**, 35B MoE with only ~3B active |
+| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — dense 27B, the quality pick |
 | `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` |
 | `27b-3bit` | 14 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
 | `27b-4bit` | 17 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
-| `9b` | 6 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster |
-| `moe` | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **fastest**, 3B active |
+| `9b` | 6 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster, smaller |
 
 Each is an MLX pack with a verified MTP head, which is what makes the
-speculative decoding work. The HauhauCS Aggressive fine-tune is the basis of
-the default.
+speculative decoding work. The 27B entries are HauhauCS Aggressive
+fine-tunes; the MoE is a Heretic abliteration.
 
-`moe` is the speed pick, and it is the answer if you want the fast
-mixture-of-experts class **and** uncensored output. Measured here on an M5 Pro,
-at MTP depth 1:
+**Why the MoE leads.** A dense model reads every weight on every token, so a
+dense 27B reads ~15 GB per token no matter how little of it the answer needs.
+The MoE activates ~3B of its 35B, so it reads roughly a fifth as much and goes
+proportionally faster — which is precisely the trade agents want, since an
+agent emits many small tool calls rather than long essays.
+
+Both are uncensored, both are one command apart. Measured here on an M5 Pro, at
+MTP depth 1:
 
 | context | dense 27B (`4bit`) | `moe` (35B-A3B) | gain |
 |---:|---:|---:|---:|
@@ -227,8 +243,8 @@ at MTP depth 1:
 
 The gap widens with context, which is where agents actually live: at 32k the MoE
 is nearly three times faster. Prefill also improves, from ~440 to ~1,200 t/s.
-MTP depth 1 is optimal for it and depth 2 for the dense model; both are recorded
-per model.
+MTP depth 1 is optimal for the MoE and depth 2 for the dense model; both are
+recorded per model, so switching does not make you re-tune by hand.
 
 > **A naming trap worth knowing.** Packs literally called
 > `...-MTPLX-Optimized-Speed` also exist in uncensored variants, and they do
@@ -304,7 +320,7 @@ resume, so an interrupted fetch is cheap to restart.
 The settings you are most likely to touch:
 
 ```conf
-MODEL="itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit"
+MODEL="hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16"
 CONTEXT_WINDOW=131072     # 204800 or 262144 if you left yourself headroom
 THINKING="low"            # off | low | medium | high
 MTP_DEPTH="auto"          # auto | 1 | 2 | 3 | 0 (off)
@@ -341,7 +357,7 @@ UpinelAIOS-MLX restart
   left of the arrow is what is running now; right is what will start.
 
   Starting with:
-    model      itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+    model      hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16
     served as  Upinel-AIOS-MLX
     context    204800   KV off   MTP depth 2
     profile    sustained   thinking high   history scoped
@@ -541,28 +557,34 @@ stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×
 
 **But 75+ t/s is reachable — with a different model.** A mixture-of-experts
 checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
-but **3B active**, so each token reads roughly a tenth as many weights:
+but **3B active**, so each token reads roughly a tenth as many weights. That is
+the whole reason the MoE is the default.
 
-```conf
-MODEL="moe"      # Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed, 21 GB
-```
-
-Measured here, on the same M5 Pro, with MTP depth 1:
-
-| context | dense 27B (default) | MoE 35B-A3B | gain |
+| context | dense 27B (`4bit`) | MoE (35B-A3B) | gain |
 |---:|---:|---:|---:|
-| 512 | 42–51 t/s | **78 t/s** | ~1.7× |
-| 8,192 | ~38 t/s | **208 t/s** | ~5.5× |
-| 32,768 | ~22 t/s | **125 t/s** | ~5.7× |
+| 512 | 42–51 t/s | **78–83 t/s** | ~1.7× |
+| 8,192 | ~38 t/s | **72 t/s** | ~1.9× |
+| 32,768 | ~22 t/s | **61 t/s** | ~2.8× |
 
-Prefill improves as well — 1,837 t/s against 444 t/s — so long prompts arrive
-roughly four times sooner.
+Prefill improves too, from ~440 to ~1,200 t/s, so long prompts arrive sooner as
+well. The gap widens with context, which is where agents actually live.
 
-**The trade is not free.** `Qwen3.6-35B-A3B` is Qwen's own aligned model, not an
-uncensored fine-tune, and it is a different base generation. The dense 4-bit
-default remains the pick for uncensored output and for the specific HauhauCS
-fine-tune; the MoE is the pick when throughput is what you care about. Both are
-installed with `./install.sh` and switched with one line in `env.conf`.
+> **An earlier, faster MoE was dropped, and the numbers are worth keeping.**
+> The `moe` alias used to point at `Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed`,
+> a deliberately speed-optimised build measured at **78 / 208 / 125 t/s** across
+> the three contexts above — roughly twice the current build at long context.
+> It is not here because it is **Qwen's own aligned model**, and this project
+> ships uncensored only. `moe` now points at a Heretic abliteration of the same
+> architecture, which is why the long-context figures are lower: an uncensored
+> fine-tune of the same shape, not the same tuning.
+>
+> If throughput matters to you more than refusals, that build is one line away —
+> `MODEL="Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed"` — and saying so
+> plainly beats pretending the uncensored one is just as quick.
+
+**Both are installed with `./install.sh` and switched with `./model_download.sh --switch`.**
+The MoE is the default; the dense 4-bit 27B is the pick if you want the specific
+HauhauCS fine-tune.
 
 MTP depth 1 is optimal for the MoE and depth 2 for the dense model — tuning
 results are stored per model in `run/tuning-<model>.json`, so switching models
