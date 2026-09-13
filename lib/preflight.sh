@@ -73,19 +73,25 @@ print_hardware() {
 recommend_config() {
   local ram="$HW_RAM_GB"
 
-  # Model: the 4-bit build runs anywhere; the 6-bit builds want 64 GB+.
-  if (( ram >= 96 )); then
-    REC_MODEL="itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit"
-    REC_WEIGHTS_GB=23
-    REC_REASON_MODEL="6-bit fits comfortably at ${ram} GB and is closer to the original weights"
-  else
-    REC_MODEL="itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit"
+  # moe is the default, and it is not a close call: the 35B-A3B activates only
+  # ~3B parameters per token, so it decodes at ~83 tok/s against 42-51 for the
+  # dense 27B, while costing about the same memory. The dense builds are the
+  # fidelity picks, not the speed picks.
+  #
+  # This used to recommend the dense 4bit 27B on every Mac under 96 GB, which
+  # meant install.sh would quietly downgrade anyone already on the default.
+  if (( ram >= 48 )); then
+    REC_MODEL="$(model_repo_for moe)"
+    REC_WEIGHTS_GB=22
+    REC_REASON_MODEL="35B MoE with ~3B active - the fastest option here (~83 tok/s), and it fits ${ram} GB"
+  elif (( ram >= 32 )); then
+    REC_MODEL="$(model_repo_for 4bit)"
     REC_WEIGHTS_GB=15
-    if (( ram >= 64 )); then
-      REC_REASON_MODEL="4-bit is the fastest; switch to '6bit' if you want more fidelity"
-    else
-      REC_REASON_MODEL="4-bit is the only build that fits in ${ram} GB"
-    fi
+    REC_REASON_MODEL="dense 4-bit 27B: the MoE wants ~30 GB resident, which is most of a ${ram} GB Mac"
+  else
+    REC_MODEL="$(model_repo_for 9b)"
+    REC_WEIGHTS_GB=5
+    REC_REASON_MODEL="${ram} GB is below what a 27B wants; the 9B is the only entry here that fits"
   fi
 
   # Context and KV quant together have to fit the memory budget.
@@ -135,24 +141,31 @@ recommend_config() {
   fi
 
   # Model + KV + activation headroom, for the fit check.
+  #
+  # KV now comes from the model's own architecture rather than one hardcoded
+  # curve: the recommended model here is the 35B MoE, not the 27B, and the two
+  # do not cache KV on the same number of layers.
   local kv_kb
-  case "$REC_KV" in
-    q4) kv_kb=18 ;;
-    q8) kv_kb=34 ;;
-    *)  kv_kb=64 ;;
-  esac
+  kv_kb="$(kv_kb_for "$REC_MODEL" "$REC_KV")"
   REC_KV_GB=$(( REC_CONTEXT * kv_kb / 1024 / 1024 ))
   REC_NEED_GB=$(( REC_WEIGHTS_GB + REC_KV_GB + 6 ))
+}
+
+# KV KB/token for one repo id at one quant, from the architecture table.
+kv_kb_for() {
+  local repo="$1" quant="$2" kb
+  kb="$(kv_kb_per_token_f16 "$repo")"
+  case "$quant" in
+    q4|q4_0) kb=$(( kb / 4 )) ;;
+    q8|q8_0) kb=$(( kb / 2 )) ;;
+  esac
+  echo "$kb"
 }
 
 # Does the *current* env.conf fit this machine?
 current_config_fits() {
   local cur_kb cur_kv_gb cur_weights cur_need
-  case "$KV_QUANT" in
-    q4) cur_kb=18 ;;
-    q8) cur_kb=34 ;;
-    *)  cur_kb=64 ;;
-  esac
+  cur_kb="$(kv_kb_for "${MODEL_REPO:-$(model_repo_for "$MODEL")}" "$KV_QUANT")"
   cur_kv_gb=$(( CONTEXT_WINDOW * cur_kb / 1024 / 1024 ))
   cur_weights="$(model_weight_gb)"
   cur_need=$(( cur_weights + cur_kv_gb + 6 ))
@@ -162,6 +175,100 @@ current_config_fits() {
 
   # It fits if the plan is inside the configured cap AND inside physical RAM.
   (( cur_need <= MEMORY_LIMIT_GB )) && (( cur_need <= HW_RAM_GB ))
+}
+
+# ── per-model fit, for the picker ────────────────────────────────────────────
+# Download size in GB for each known repo. The table lives in common.sh so the
+# picker and model_weight_gb() cannot drift apart.
+model_size_gb() {
+  model_download_gb "$1"
+}
+
+# One-line note about a model, shown beside its verdict.
+model_note() {
+  case "$1" in
+    moe)       echo "35B MoE, ~3B active - the fastest here (~83 tok/s), and the default" ;;
+    4bit)      echo "dense 27B, ~50 tok/s - the fidelity pick at well under half the speed" ;;
+    6bit)      echo "dense 27B, closest to the original weights; the slowest 27B" ;;
+    27b-3bit)  echo "dense 27B squeezed to 3-bit: smallest 27B, some quality loss" ;;
+    27b-4bit)  echo "another 27B 4-bit from a different publisher: 1 GB bigger, same shape" ;;
+    9b)        echo "dense 9B, ~40 tok/s - the only entry that fits a small Mac" ;;
+    *)         echo "" ;;
+  esac
+}
+
+# What this model would cost on THIS machine, and whether it fits.
+# Prints "<need> <verdict>".
+model_fit() {
+  # Named _mf rather than "alias": alias is a bash builtin, and shadowing it in
+  # a function that other code may call is asking for trouble.
+  local _mf="$1" repo size_gb kv_gb need_gb
+  repo="$(model_repo_for "$_mf" 2>/dev/null)"
+  size_gb="$(model_size_gb "$repo")"
+  (( size_gb > 0 )) || { echo "? unknown"; return; }
+  # KV for this model at the recommended context, scaled by the quant.
+  local per_tok; per_tok="$(kv_kb_for "$repo" "$REC_KV")"
+  kv_gb=$(( REC_CONTEXT * per_tok / 1024 / 1024 ))
+  need_gb=$(( size_gb + kv_gb + 6 ))
+
+  local verdict
+  if [[ -n "$REC_ALIAS" && "$_mf" == "$REC_ALIAS" ]]; then
+    verdict="RECOMMENDED"
+  elif (( need_gb + 6 <= HW_RAM_GB )); then
+    verdict="fits comfortably"
+  elif (( need_gb <= HW_RAM_GB )); then
+    verdict="tight - expect paging"
+  else
+    verdict="will not fit"
+  fi
+  echo "${need_gb} ${verdict}"
+}
+
+# Reverse-map a repo id back to its alias, so the picker can mark the
+# recommended one. Empty when the repo is not a known alias.
+alias_for_repo() {
+  local a
+  for a in $MODEL_ALIASES; do
+    [[ "$(model_repo_for "$a" 2>/dev/null)" == "$1" ]] && { echo "$a"; return; }
+  done
+  echo ""
+}
+
+# Numbered picker. Everything it needs is in globals; it does not read input.
+print_model_menu() {
+  log ""
+  log "  ${C_BOLD}Pick a model${C_RESET}   ${C_DIM}this Mac has ${HW_RAM_GB} GB of unified memory${C_RESET}"
+  log ""
+  printf '  %3s  %-10s %-6s %-20s %s\n' "#" "ALIAS" "SIZE" "VERDICT" "NOTE"
+  printf '  %3s  %-10s %-6s %-20s %s\n' "---" "----------" "------" "--------------------" "----------------------------------------"
+
+  local i=1 alias fit need verdict note colour
+  MODEL_MENU_ALIASES=""
+  for alias in $MODEL_ALIASES; do
+    fit="$(model_fit "$alias")"
+    need="${fit%% *}"; verdict="${fit#* }"
+    note="$(model_note "$alias")"
+    case "$verdict" in
+      RECOMMENDED)       colour="$C_GREEN"  ;;
+      fits\ comfortably) colour=""           ;;
+      tight*)            colour="$C_YELLOW" ;;
+      will\ not\ fit)    colour="$C_RED"    ;;
+      *)                 colour="$C_DIM"    ;;
+    esac
+    printf '  %3d  %-10s %-6s %s%-20s%s %s%s%s\n' \
+      "$i" "$alias" \
+      "$(model_size_gb "$(model_repo_for "$alias" 2>/dev/null)") GB" \
+      "$colour" "$verdict" "$C_RESET" "$C_DIM" "$note" "$C_RESET"
+    MODEL_MENU_ALIASES="$MODEL_MENU_ALIASES $alias"
+    i=$(( i + 1 ))
+  done
+
+  log ""
+  log "  ${C_DIM}Enter a number, or press Enter to keep your current model.${C_RESET}"
+  log "  ${C_DIM}A model that will not fit can still be chosen - it will just be slow,${C_RESET}"
+  log "  ${C_DIM}or fail to load. ./model_download.sh fetches it afterwards.${C_RESET}"
+  log ""
+  printf '  Model number: '
 }
 
 # ── display ──────────────────────────────────────────────────────────────────
@@ -262,6 +369,7 @@ run_preflight() {
   print_hardware
 
   recommend_config
+  REC_ALIAS="$(alias_for_repo "$REC_MODEL")"
   print_recommendation
 
   # Disk space for the download, only if it is not already there.
@@ -314,7 +422,50 @@ run_preflight() {
   local reply=""
   read -r reply < /dev/tty || reply=""
   case "$reply" in
-    n|N|no|NO) info "Keeping your current env.conf." ;;
+    n|N|no|NO)
+      # Declining the whole suggestion usually means "not that model", so offer
+      # the list with a per-machine verdict rather than just giving up.
+      print_model_menu
+      local pick=""
+      read -r pick < /dev/tty || pick=""
+      pick="${pick//[!0-9]/}"
+      if [[ -z "$pick" ]]; then
+        info "Keeping your current env.conf."
+        return 0
+      fi
+      local idx=1 chosen="" a
+      for a in $MODEL_MENU_ALIASES; do
+        if (( idx == pick )); then chosen="$a"; break; fi
+        idx=$(( idx + 1 ))
+      done
+      if [[ -z "$chosen" ]]; then
+        warn "No model number $pick; keeping your current env.conf."
+        return 0
+      fi
+      local fit verdict size_gb
+      fit="$(model_fit "$chosen")"; verdict="${fit#* }"
+      REC_MODEL="$(model_repo_for "$chosen")"
+      REC_ALIAS="$chosen"
+      size_gb="$(model_size_gb "$REC_MODEL")"
+      log ""
+      if [[ "$verdict" == "will not fit" ]]; then
+        warn "$chosen needs about ${fit%% *} GB and this Mac has ${HW_RAM_GB} GB."
+        warn "It will be slow at best and may fail to load. Choosing it anyway."
+      elif [[ "$verdict" == tight* ]]; then
+        warn "$chosen needs about ${fit%% *} GB on a ${HW_RAM_GB} GB Mac - expect paging."
+      fi
+      # The disk check above ran against the SUGGESTED model's size, so a larger
+      # pick has to be re-checked or the download dies half way through.
+      if (( size_gb > 0 )) && (( HW_FREE_GB < size_gb + 3 )); then
+        warn "$chosen downloads about ${size_gb} GB and only ${HW_FREE_GB} GB is free."
+        warn "Free up space, or set MODELS_DIR in env.conf to a bigger volume."
+        info "Keeping your current env.conf."
+        return 0
+      fi
+      info "Using $chosen. The other suggested settings still apply."
+      (( size_gb > 0 )) && REC_WEIGHTS_GB="$size_gb"
+      apply_config
+      ;;
     *)         apply_config ;;
   esac
   return 0

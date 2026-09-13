@@ -115,8 +115,9 @@ and proposes exactly these numbers for you.
 plenty left for macOS, your editor and a browser. That is what this was built
 and measured on.
 
-Disk: roughly 25 GB per model. The default MoE is 22 GB, the dense 4-bit 15 GB, the 6-bit 23 GB,
-the MoE 21 GB. `install.sh` downloads only the model you have selected.
+Disk: 5–22 GB per model, depending which you pick. `install.sh` downloads only
+the model you have selected, and lets you pick a different one by number if the
+suggested model is not what you want.
 
 ## Quick start
 
@@ -214,14 +215,36 @@ a product rule, not a coincidence: this endpoint exists so you can run a model
 that will not refuse you, and there is no point being fast at something that
 won't answer.
 
+You do not have to choose from this table by hand. `install.sh` scans your Mac
+and proposes a model and settings for it; if you would rather not have that one,
+answer `n` at the prompt and it prints a numbered list of everything below, each
+row marked with a verdict for *your* memory:
+
+```
+    #  ALIAS      SIZE   VERDICT              NOTE
+    1  4bit       15 GB  fits comfortably     dense 27B, ~50 tok/s - the fidelity pick
+    ...
+    6  moe        22 GB  RECOMMENDED          35B MoE, ~3B active - the fastest here (~83 tok/s)
+  Model number:
+```
+
+`RECOMMENDED` / `fits comfortably` / `tight - expect paging` / `will not fit` are
+computed from your unified memory, the model's published size, and that model's
+own KV cost per token — the 27B is a hybrid that caches KV on only 16 of its 64
+layers, while the dense 9B caches on all 32, so the 9B costs *twice* as much per
+token despite being a quarter of the size. Verdicts are per-model, not per-size.
+Enter a number to use it, or press Enter to keep the config you already have.
+Choosing something that will not fit is allowed; it warns, then does what you
+asked.
+
 | alias | size | repo |
 |---|---:|---|
 | `moe` | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **DEFAULT**, 35B MoE with only ~3B active |
 | `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — dense 27B, the quality pick |
-| `6bit` | 23 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` |
-| `27b-3bit` | 14 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
-| `27b-4bit` | 17 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
-| `9b` | 6 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster, smaller |
+| `6bit` | 22 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` |
+| `27b-3bit` | 13 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
+| `27b-4bit` | 16 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
+| `9b` | 5 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster, smaller |
 
 Each is an MLX pack with a verified MTP head, which is what makes the
 speculative decoding work. The 27B entries are HauhauCS Aggressive

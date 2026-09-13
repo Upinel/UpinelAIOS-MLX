@@ -54,10 +54,10 @@ show_usage() {
 #   alias      size    repo
 #   ---------  ------  -------------------------------------------------------
 #   4bit       15 GB   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
-#   6bit       23 GB   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit
-#   27b-3bit   14 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit
-#   27b-4bit   17 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit
-#   9b          6 GB   Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX
+#   6bit       22 GB   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit
+#   27b-3bit   13 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit
+#   27b-4bit   16 GB   barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit
+#   9b          5 GB   Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX
 #   moe        22 GB   hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16
 #
 #   "moe" is the speed pick: a mixture-of-experts model with 3B active per
@@ -99,7 +99,9 @@ load_config() {
   [[ -f "$ENV_FILE" ]] || die "env.conf not found at $ENV_FILE"
 
   # Defaults first, so a trimmed env.conf still works.
-  MODEL="4bit"
+  # moe, not 4bit: the MoE is the measured fastest thing here (~83 tok/s vs
+  # 42-51 for the dense 27B) and is what the README documents as the default.
+  MODEL="moe"
   MODELS_DIR="$REPO_DIR/models"
   CONTEXT_WINDOW=131072
   MAX_RESPONSE_TOKENS=32768
@@ -331,9 +333,61 @@ kv_kb_per_token() {
   esac
 }
 
+# KV cost per token in KB at f16, for one specific model. Divide by 2 for q8,
+# by 4 for q4.
+#
+# The table above is the 27B's own curve, and it is right for the 27B: that
+# model is a hybrid that caches KV on only 16 of its 64 layers. But the other
+# entries in the registry are not the same shape, and reusing the 27B's numbers
+# for them gets the comparison exactly backwards:
+#
+#   * the dense 9B keeps KV on ALL 32 of its layers, so it is twice as
+#     expensive per token as the 27B despite being a quarter of the size;
+#   * the 35B MoE is hybrid like the 27B and has only 12 attention layers.
+#
+# Sizes below are elements per token (K and V, 4 kv-heads x 256 head-dim).
+# The 27B row is the measured/model-card figure; the other two are derived
+# from their layer counts and are marked as estimates.
+#
+# Keyed on the FAMILY, not on the quant tag: the MoE's repo id contains
+# "MTPLX-4bit" as well, so matching on that would silently hand the 35B the
+# 27B's curve. Same trap as the draft-head mixup in the GGUF sister project.
+kv_kb_per_token_f16() {
+  case "$1" in
+    # ~12 of 48 attention layers.
+    *Qwen3.6-35B*) echo 48  ;;   # estimate - MoE, hybrid, only some layers cache KV
+    # 32 of 32 layers - dense, full attention on every layer.
+    *Qwen3.8-9B*)  echo 128 ;;   # estimate - dense: 2x the 27B per token, at a quarter the size
+    # 16 of 64 layers - every 27B build here (4bit/6bit/3bit, both owners).
+    *)             echo 64  ;;
+  esac
+}
+
+# How many GB a repo's model files weigh, by repo id. This is the sum of every
+# .safetensors file the runtime loads - trunk weights, the MTP head and the
+# vision tower - which is also what model_weight_gb() measures on disk, so the
+# two agree instead of disagreeing by a few GB.
+#
+# Read off the published repos (exact byte totals divided by 1e9, truncated):
+#   4bit 15.98, 6bit 22.71, 27b-3bit 13.54, 27b-4bit 16.90, 9b 5.52, moe 22.09
+#
+# Keyed on OWNER as well as quant: the two 4-bit 27B repos are 15 GB and 16 GB
+# for the same nominal quant, and a quant-only pattern matches both at once.
+model_download_gb() {
+  case "$1" in
+    *itrejomx*MTPLX-6bit*) echo 22 ;;
+    *itrejomx*MTPLX-4bit*) echo 15 ;;
+    *barozp*MTPLX-4bit*)   echo 16 ;;
+    *MTPLX-3bit*)          echo 13 ;;
+    *Qwen3.8-9B*)          echo 5  ;;
+    *Qwen3.6-35B*)         echo 22 ;;
+    *)                     echo 0  ;;
+  esac
+}
+
 # Size of the trunk weights in GB (whole numbers). Prefers the real on-disk
 # size so a 6-bit build or a custom repo is accounted for correctly; falls back
-# to a guess from the quant tag before the model has been downloaded.
+# to the published size before the model has been downloaded.
 model_weight_gb() {
   if [[ -n "${MODEL_DIR:-}" && -d "${MODEL_DIR:-}" ]]; then
     local bytes
@@ -344,6 +398,12 @@ model_weight_gb() {
       return
     fi
   fi
+  # Fall back to the published size. This used to guess from the quant tag
+  # alone, which returned 15 GB for moe, 9b and 27b-4bit alike - so a fresh
+  # install was told a 22 GB model would fit a 16 GB Mac.
+  local gb
+  gb="$(model_download_gb "${MODEL_REPO:-}")"
+  if (( gb > 0 )); then echo "$gb"; return; fi
   case "${MODEL_REPO:-}" in
     *6bit*|*6-bit*|*Q6*|*6bit*) echo 23 ;;
     *8bit*|*8-bit*|*Q8*)        echo 30 ;;
