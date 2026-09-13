@@ -26,8 +26,10 @@ without executing anything would be more confusing than useful.
 
 import json
 import os
+import queue
 import shutil
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -119,8 +121,15 @@ class Client:
             body["chat_template_kwargs"] = {"enable_thinking": self.thinking}
         return body
 
-    def send(self, text, on_delta):
-        """Stream one reply. Returns (content, reasoning, timings)."""
+    def send(self, text, on_delta, on_wait=None):
+        """Stream one reply. Returns (content, reasoning, timings).
+
+        `on_wait` is called roughly once a second until the first token lands,
+        with (elapsed_seconds, server_progress). A server that is prefilling a
+        long context, or throttled by memory pressure, can sit silent for a
+        minute or more - and with no output at all that is indistinguishable
+        from a hang, which is exactly how it reads to a user.
+        """
         self.history.append({"role": "user", "content": text})
         stream = "stream" in self.caps
         req = urllib.request.Request(
@@ -158,6 +167,12 @@ class Client:
                         continue
                     if chunk.get("timings"):
                         timings = chunk["timings"]
+                    # MTPLX emits progress heartbeats while it works. They carry
+                    # no content, but they are the difference between "busy" and
+                    # "stuck", so pass them to the waiting indicator rather than
+                    # discarding them.
+                    if chunk.get("mtplx_progress") and on_wait:
+                        on_wait(time.time() - t0, chunk["mtplx_progress"])
                     usage = chunk.get("usage")
                     if usage:
                         timings.setdefault("_usage", usage)
@@ -336,27 +351,82 @@ def main():
                     in_reasoning[0] = False
                 render_content(piece)
 
+        # The request runs on a worker so this thread can keep drawing while
+        # the server is silent. A cold model can take a minute to its first
+        # token; printing nothing for that long reads as a hang.
+        events = queue.Queue()
+        outcome = {}
+
+        def worker():
+            try:
+                outcome["r"] = cl.send(
+                    text,
+                    lambda p, k: events.put(("delta", (p, k))),
+                    lambda el, pg: events.put(("wait", (el, pg))))
+            except BaseException as e:                          # noqa: BLE001
+                outcome["e"] = e
+            finally:
+                events.put(("done", None))
+
         t0 = time.time()
-        try:
-            content, reasoning, timings = cl.send(text, on_delta)
-        except KeyboardInterrupt:
-            print(c(DIM, "\n  (stopped)"))
-            # Roll back the turn we optimistically appended.
+        started = False
+        progress = None
+        th = threading.Thread(target=worker, daemon=True)
+        th.start()
+
+        while True:
+            try:
+                kind, payload = events.get(timeout=0.5)
+            except queue.Empty:
+                if not started:
+                    el = time.time() - t0
+                    if progress:
+                        note = (f"{progress.get('phase', 'working')}  "
+                                f"{progress.get('completion_tokens', 0)} tok")
+                    else:
+                        note = "waiting for the server"
+                    sys.stdout.write(
+                        c(DIM, f"\r  ⏳ {el:4.1f}s   {note}   ") if _COLOR
+                        else f"\r  ... {el:4.1f}s   {note}   ")
+                    sys.stdout.flush()
+                    if el > 25 and int(el * 2) % 20 == 0:
+                        sys.stdout.write(c(YELLOW, "\n  (still nothing - "
+                                                  "./status.sh shows whether the "
+                                                  "server is throttled)"))
+                        sys.stdout.flush()
+                continue
+
+            if kind == "wait":
+                progress = payload[1]
+                continue
+            if kind == "done":
+                break
+            piece, dkind = payload
+            if not started:
+                # First real output: wipe the waiting line.
+                sys.stdout.write("\r" + " " * max(0, width() - 1) + "\r")
+                sys.stdout.flush()
+                started = True
+            on_delta(piece, dkind)
+
+        err = outcome.get("e")
+        if err is not None:
+            sys.stdout.write("\r" + " " * max(0, width() - 1) + "\r")
+            if isinstance(err, urllib.error.HTTPError):
+                detail = err.read().decode("utf-8", "replace")[:300]
+                print(c(RED, f"  HTTP {err.code}: {detail}"))
+            elif isinstance(err, urllib.error.URLError):
+                print(c(RED, f"  cannot reach {cl.base}: {err.reason}"))
+                print(c(DIM, "  is the server running? try ./status.sh or ./start.sh"))
+            elif isinstance(err, KeyboardInterrupt):
+                print(c(DIM, "  (stopped)"))
+            else:
+                print(c(RED, f"  {type(err).__name__}: {err}"))
             if cl.history and cl.history[-1]["role"] == "user":
                 cl.history.pop()
             continue
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "replace")[:300]
-            print(c(RED, f"\n  HTTP {e.code}: {detail}"))
-            if cl.history and cl.history[-1]["role"] == "user":
-                cl.history.pop()
-            continue
-        except urllib.error.URLError as e:
-            print(c(RED, f"\n  cannot reach {cl.base}: {e.reason}"))
-            print(c(DIM, "  is the server running? try ./status.sh or ./start.sh"))
-            if cl.history and cl.history[-1]["role"] == "user":
-                cl.history.pop()
-            continue
+
+        content, reasoning, timings = outcome.get("r", ("", "", {}))
 
         wall = time.time() - t0
         if not content and not reasoning:

@@ -212,6 +212,30 @@ auth_header() {
   fi
 }
 
+# Is the server on $PORT actually OURS?
+#
+# /health alone is not enough. Any OpenAI-compatible server answers it, so a
+# server belonging to a *different* project satisfies the check and start.sh
+# reports success while serving the wrong thing. That happened for real: this
+# project's start.sh printed "Server is up" while a GGUF llama-server from the
+# sister project held port 8000, and the only visible symptom was every client
+# getting 401 against a key the running server had never heard of.
+#
+# The served model id is the cheapest reliable fingerprint - each project
+# publishes its own, and it is present as soon as the server can answer.
+server_is_ours() {
+  local hdr body
+  hdr="$(auth_header)"
+  if [[ -n "$hdr" ]]; then
+    body="$(curl -fsS --max-time 4 -H "$hdr" \
+              "http://127.0.0.1:${PORT}/v1/models" 2>/dev/null)"
+  else
+    body="$(curl -fsS --max-time 4 \
+              "http://127.0.0.1:${PORT}/v1/models" 2>/dev/null)"
+  fi
+  [[ -n "$body" ]] && grep -qF "$SERVED_MODEL_NAME" <<<"$body"
+}
+
 server_healthy() {
   local hdr; hdr="$(auth_header)"
   if [[ -n "$hdr" ]]; then
@@ -234,7 +258,8 @@ health_json() {
 wait_healthy() {
   local timeout="${1:-600}" waited=0
   while (( waited < timeout )); do
-    if server_healthy; then return 0; fi
+    # Both: answering /health is not the same as being our server.
+    if server_healthy && server_is_ours; then return 0; fi
     if [[ -f "$PID_FILE" ]] && ! pid_alive; then return 2; fi
     sleep 2; waited=$(( waited + 2 ))
   done
