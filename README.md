@@ -116,6 +116,7 @@ git clone https://github.com/upinel/UpinelAIOS-MLX && cd UpinelAIOS-MLX
 ./chat.sh             # talk to it right here in the terminal
 ./status.sh           # live dashboard: CPU, GPU, memory, live decode rate
 ./restart.sh          # apply an env.conf change
+./model_download.sh   # download another model
 ./stop.sh
 ```
 
