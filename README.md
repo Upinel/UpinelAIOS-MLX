@@ -618,9 +618,15 @@ against published MTPLX figures. Treat these as order-of-magnitude:
 | M3 / M4 base | 25–35 t/s | 10–15 t/s |
 | M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
 | **M5 Pro**, dense 27B (measured) | **42–51 t/s** | **17 t/s** |
-| **M5 Pro**, MoE 35B-A3B (measured) | **78 t/s** | **125 t/s** |
+| **M5 Pro**, MoE 35B-A3B (measured) | **83 t/s** | **~70 t/s** |
 | M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
 | M3 Ultra | 60–75 t/s | 22–28 t/s |
+
+The MoE's ~10k figure is interpolated between its measured 8k and 32k points
+(72 and 61 t/s); every other figure on those two rows is measured. The 35B-A3B
+row replaces an earlier reading of 78 t/s and 125 t/s, which were the *old*
+`moe` build and a prefill number respectively — see the note under the
+throughput section.
 
 The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
 suggests — roughly 51 → 59 t/s on published figures. Beyond a point this model
@@ -646,7 +652,7 @@ the whole reason the MoE is the default.
 
 | context | dense 27B (`4bit`) | MoE (35B-A3B) | gain |
 |---:|---:|---:|---:|
-| 512 | 42–51 t/s | **78–83 t/s** | ~1.7× |
+| 512 | 42–51 t/s | **83 t/s** | ~1.7× |
 | 8,192 | ~38 t/s | **72 t/s** | ~1.9× |
 | 32,768 | ~22 t/s | **61 t/s** | ~2.8× |
 
@@ -655,8 +661,17 @@ well. The gap widens with context, which is where agents actually live.
 
 > **An earlier, faster MoE was dropped, and the numbers are worth keeping.**
 > The `moe` alias used to point at `Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed`,
-> a deliberately speed-optimised build measured at **78 / 208 / 125 t/s** across
-> the three contexts above — roughly twice the current build at long context.
+> a deliberately speed-optimised build of the same architecture, recorded at
+> **78 / 208 / 125 t/s** across the three contexts above — roughly twice the
+> current build at 32k.
+>
+> Those three are not a clean series, and the 512 figure should be treated as
+> suspect: **208 t/s at 8k is higher than 78 t/s at 512**, and decode does not
+> get *faster* as context grows. That reading was most likely taken before the
+> machine had warmed up. Trust the 8k and 32k figures; 78 t/s is not the old
+> build's real short-context rate, and it is not comparable with the 83 t/s
+> above.
+>
 > It is not here because it is **Qwen's own aligned model**, and this project
 > ships uncensored only. `moe` now points at a Heretic abliteration of the same
 > architecture, which is why the long-context figures are lower: an uncensored
