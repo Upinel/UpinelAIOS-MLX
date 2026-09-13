@@ -24,6 +24,7 @@ implemented: this is a chat client, and a client that pretends to be an agent
 without executing anything would be more confusing than useful.
 """
 
+import atexit
 import json
 import os
 import queue
@@ -35,7 +36,8 @@ import urllib.error
 import urllib.request
 
 # ── terminal ─────────────────────────────────────────────────────────────────
-_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+_TTY = sys.stdout.isatty()
+_COLOR = _TTY and os.environ.get("NO_COLOR") is None
 
 
 def c(code, text):
@@ -74,7 +76,124 @@ HELP = f"""
 {c(BOLD, 'Keys')}
   Enter sends. Ctrl-C stops the current reply without quitting.
   Ctrl-D or /exit leaves. Up/Down walks your input history.
+
+{c(BOLD, 'Pasting')}
+  Paste as many lines as you like: a paste is sent as ONE message, not one
+  message per line, and lines inside it are never run as commands. A paste
+  that is a single line still works as a command, so /help pasted on its own
+  runs; /help pasted with other lines is sent as text.
 """
+
+
+# ── input ────────────────────────────────────────────────────────────────────
+PASTE_MARKS = ("\x1b[200~", "\x1b[201~")
+BRACKET_ON = "\x1b[?2004h"
+BRACKET_OFF = "\x1b[?2004l"
+
+# How long to wait for the next line before deciding the message is complete.
+# A line that was already part of a paste comes back from readline instantly
+# (measured: 0.000 s); a person typing the next line takes hundreds of
+# milliseconds. 50 ms sits far from both.
+PASTE_SETTLE = 0.05
+
+_NOT_PENDING = object()          # distinct from "" - an empty line is real input
+_QUEUE = queue.Queue()
+_READER = None
+
+
+def _reader_loop():
+    while True:
+        try:
+            _QUEUE.put(input())
+        except EOFError:
+            _QUEUE.put(EOFError)
+            return
+        except KeyboardInterrupt:
+            _QUEUE.put(KeyboardInterrupt)
+            return
+
+
+def next_line(timeout=None):
+    """One line from the terminal, or _NOT_PENDING if none arrives in time.
+
+    This runs input() on a thread for two reasons. input() has no timeout, and
+    readline buffers the rest of a paste inside itself, where select() on the
+    terminal cannot see it - so polling the file descriptor misses lines that
+    are definitely there. Asking readline for the next line is the only
+    reliable test, and that has to happen where it cannot block the UI.
+    """
+    global _READER
+    if _READER is None:
+        _READER = threading.Thread(target=_reader_loop, daemon=True)
+        _READER.start()
+    try:
+        item = _QUEUE.get() if timeout is None else _QUEUE.get(timeout=timeout)
+    except queue.Empty:
+        return _NOT_PENDING
+    if item is EOFError:
+        raise EOFError
+    if item is KeyboardInterrupt:
+        raise KeyboardInterrupt
+    return item
+
+
+def strip_marks(line):
+    """Remove bracketed-paste markers if the terminal passed them through."""
+    for mark in PASTE_MARKS:
+        if mark in line:
+            line = line.replace(mark, "")
+    return line
+
+
+def leave_bracketed_paste():
+    """Restore the terminal. Registered with atexit, so every exit path runs it."""
+    try:
+        sys.stdout.write(BRACKET_OFF)
+        sys.stdout.flush()
+    except Exception:                                           # noqa: BLE001
+        pass
+
+
+def read_message(prompt):
+    """Read one turn, taking a whole multi-line paste as a single message.
+
+    Returns (text, number_of_lines).
+
+    input() hands back only the first line of a paste and leaves the rest
+    queued. Without collecting the remainder, pasting a code block produced one
+    turn per line, and a pasted line starting with "/" was run as a command
+    instead of being sent as text.
+    """
+    # The prompt is printed here rather than passed to input(), because the
+    # reader thread is normally already blocked in input() waiting for the next
+    # message and cannot print a prompt for it.
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+
+    first = next_line()
+    if first is _NOT_PENDING:
+        raise EOFError
+
+    # A terminal that negotiated bracketed paste can hand the whole block over
+    # as one line containing real newlines, in which case it is already whole.
+    lines = first.split("\n") if "\n" in first else [first]
+
+    # Otherwise collect the remainder. Anything readline already holds comes
+    # back at once; the wait only ever costs PASTE_SETTLE on a real Enter.
+    while True:
+        nxt = next_line(timeout=PASTE_SETTLE)
+        if nxt is _NOT_PENDING:
+            break
+        lines.append(nxt)
+
+    lines = [strip_marks(l) for l in lines]
+
+    # Pastes usually end with a newline. Keep blank lines the user pasted on
+    # purpose, but do not manufacture one from the trailing newline itself.
+    while len(lines) > 1 and not lines[-1].strip():
+        lines.pop()
+
+    return "\n".join(lines), len(lines)
 
 
 class Client:
@@ -238,11 +357,18 @@ def main():
     cl = Client()
 
     # readline gives arrow-key history and line editing; optional.
+    gnu_readline = False
     try:
         import readline
         readline.set_history_length(500)
+        # History is added explicitly in the loop, so a pasted block lands in
+        # history as one entry instead of one entry per line.
+        readline.set_auto_history(False)
+        gnu_readline = "libedit" not in (readline.__doc__ or "")
     except ImportError:
         readline = None
+    except AttributeError:
+        pass
 
     print()
     print(c(BOLD, "  UpinelAIOS chat"))
@@ -254,20 +380,48 @@ def main():
     print(c(DIM, "  /help for commands, /exit to leave"))
     print()
 
+    # Bracketed paste asks the terminal to mark a pasted block, which is the
+    # cleanest way to receive one intact - but only GNU readline implements it.
+    # libedit (what macOS python3 uses) eats the opening mark and leaks its tail
+    # as literal text, so a paste arrived looking like "00~def f():". Better to
+    # leave the mode off there and let read_message() collect the block.
+    # atexit rather than a finally block: any exit path out of the loop, or an
+    # exception inside it, must still restore the terminal - otherwise the
+    # user's shell inherits the mode and echoes escapes.
+    if _TTY and gnu_readline:
+        sys.stdout.write(BRACKET_ON)
+        sys.stdout.flush()
+        atexit.register(leave_bracketed_paste)
+    elif _TTY:
+        # Turn it off explicitly rather than assuming it is off: bash enables
+        # bracketed paste for its own prompt and does not always clear it for
+        # the command it runs, and a marker we cannot parse is worse than no
+        # marker at all.
+        sys.stdout.write(BRACKET_OFF)
+        sys.stdout.flush()
+
     in_reasoning = False
     while True:
         try:
-            line = input(c(BOLD + ";" + GREEN, "you ▸ ") if _COLOR else "you > ")
+            line, nlines = read_message(
+                c(BOLD + ";" + GREEN, "you ▸ ") if _COLOR else "you > ")
         except (EOFError, KeyboardInterrupt):
             print()
             break
 
-        text = line.strip()
+        text = line.strip("\n").strip()
         if not text:
             continue
 
+        if readline and text:
+            readline.add_history(
+                text if nlines == 1
+                else f"{text.splitlines()[0]} … (+{nlines - 1} more lines)")
+
         # ── commands ─────────────────────────────────────────────────────────
-        if text.startswith("/"):
+        # Only a single line is a command. A pasted block is text: running the
+        # lines of a pasted file as commands would be a nasty surprise.
+        if text.startswith("/") and nlines == 1:
             cmd, _, arg = text[1:].partition(" ")
             cmd = cmd.lower()
             arg = arg.strip()
@@ -331,6 +485,11 @@ def main():
             continue
 
         # ── one turn ─────────────────────────────────────────────────────────
+        # Say so when a paste was folded into one message, so a pasted block
+        # that begins with "/" is not silently treated as text without comment.
+        if nlines > 1:
+            chars = len(text)
+            print(c(DIM, f"  pasted {nlines} lines, {chars} chars - sending as one message"))
         sys.stdout.write(c(BOLD + ";" + BLUE, "ai  ▸ ") if _COLOR else "ai  > ")
         sys.stdout.flush()
         # Starts False: only a reasoning delta should open the thinking block,

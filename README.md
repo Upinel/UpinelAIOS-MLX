@@ -159,6 +159,19 @@ In-session commands: `/help`, `/reset`, `/system <text>`, `/thinking`,
 `/temp <0..2>`, `/stats`, `/save <file>`, `/clear`, `/exit`. `Ctrl-C` stops a
 reply without quitting; `Ctrl-D` leaves.
 
+**Pasting works, and a paste is one message.** Paste a stack trace, a diff, or a
+whole file and it is sent as a single turn rather than one turn per line, with
+indentation intact. Lines inside a paste are never treated as commands, so
+pasting a script that contains `/exit` sends it to the model instead of quitting
+on you. A paste that is a single line still works as a command — `/help` on its
+own runs, `/help` inside a pasted block is text. The client says which it did:
+
+```
+you ▸ <12 lines pasted here>
+  pasted 12 lines, 431 chars - sending as one message
+ai  ▸ ...
+```
+
 `chat.sh` is the same client as the sister GGUF project's, and `/thinking`
 behaves slightly differently in each: llama.cpp takes thinking as a per-request
 `chat_template_kwargs`, so there `/thinking on` takes effect on the next turn,
