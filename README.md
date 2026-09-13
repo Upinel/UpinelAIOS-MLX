@@ -23,8 +23,8 @@ One command to install. One command to serve. Your data never leaves the LAN.</p
   <a href="mailto:dev@upinel.com">dev@upinel.com</a> &nbsp;·&nbsp;
   <a href="https://upinel.com">upinel.com</a></sub><br>
   <sub>Free for personal use, and free for creators — YouTubers, KOLs, streamers
-  and bloggers, <b>including the money you make</b>: just email dev@upinel.com to
-  say so, no reply needed. Other commercial use by written permission.
+  and bloggers, and <b>you keep the money you make</b>: just email dev@upinel.com
+  to say so, no reply needed. Other commercial use by written permission.
   Derivatives must credit the author. See <a href="LICENSE">LICENSE</a>.</sub>
 </p>
 
@@ -935,7 +935,7 @@ already have instead of downloading.
 | | |
 |---|---|
 | **Personal use** | Free. Use it, change it, share it. |
-| **Creators — YouTubers, KOLs, streamers, bloggers** | Free, **including the money you make from the content**. Videos, streams, posts, articles, images, tutorials — and any text or images you generate with it and publish. Just email [dev@upinel.com](mailto:dev@upinel.com) to say you're doing it. **You do not need a reply and should not wait for one** — the permission takes effect the moment you hit send. |
+| **Creators — YouTubers, KOLs, streamers, bloggers** | Free — **you keep the money you make from the content**. Videos, streams, posts, articles, images, tutorials — and any text or images you generate with it and publish. Just email [dev@upinel.com](mailto:dev@upinel.com) to say you're doing it. **You do not need a reply and should not wait for one** — the permission takes effect the moment you hit send. |
 | **Other commercial use** | Needs the author's written permission — email [dev@upinel.com](mailto:dev@upinel.com). This covers use inside a company, selling a product or service built on it, and hosting it for others as a paid service. |
 | **Derivatives** | Must credit the author and keep this licence. Fork it, port it, improve it — just leave the name on it. |
 | **Scope** | Covers this project's own code only. llama.cpp, MLX, MTPLX, Gemma 4, Qwen, and every model weight belong to other people and keep their own licences — see [section 3 of the licence](LICENSE) for the full list. |
@@ -952,7 +952,7 @@ it, or selling something that runs on it, is the thing to ask about.
 >
 > ```bash
 > shasum -a 256 LICENSE
-> # 4d8d0d63f9c825904295d1cf949dd0dfee36366b36c0c6c3142eaf42e782a241
+> # 0906eccc1ebc7e22f8de876997a4f33b7b85c3516d2c5a28796aad759fde7ff7
 > ```
 
 This is a **source-available** licence, not an open-source one: the
