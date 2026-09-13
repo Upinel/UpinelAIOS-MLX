@@ -238,7 +238,7 @@ by reading the template: only `xhigh` and `low` carry any instruction text at
 all, and `medium` sends an empty string.
 
 What actually bounds thinking is MTPLX's **thinking guard**, a token budget that
-closes the thinking block and forbids re-entry. UpinelAIOS turns it on; MTPLX
+closes the thinking block and forbids re-entry. UpinelAIOS-MLX turns it on; MTPLX
 ships it off by default. Measured, with tools present:
 
 ```json

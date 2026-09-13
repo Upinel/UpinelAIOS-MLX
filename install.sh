@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup for the UpinelAIOS bundle.
+# One-time setup for the UpinelAIOS-MLX bundle.
 #
 #   ./install.sh                 scan hardware, suggest settings, install
 #   ./install.sh --yes           accept the suggested settings without asking
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-step "UpinelAIOS - Upinel's One-Click AI Agent Server OS for Mac"
+step "UpinelAIOS-MLX - Upinel's One-Click AI Agent Server OS for Mac (MLX)"
 
 is_apple_silicon || die "This bundle targets Apple Silicon Macs. Detected: $(uname -s)/$(uname -m)."
 require_macos

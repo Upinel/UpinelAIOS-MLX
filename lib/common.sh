@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the UpinelAIOS bundle.
+# Shared helpers for the UpinelAIOS-MLX bundle.
 # Sourced by install.sh / start.sh / stop.sh / status.sh / bench/bench.sh
 
 set -euo pipefail
@@ -47,7 +47,7 @@ show_usage() {
 # Model registry.
 #
 # EVERY entry here is an uncensored fine-tune. That is a deliberate product
-# rule, not a coincidence: UpinelAIOS does not ship or suggest aligned models.
+# rule, not a coincidence: UpinelAIOS-MLX does not ship or suggest aligned models.
 # Each one is an MLX conversion packaged for MTPLX with a verified MTP head,
 # which is what makes the speculative decoding worth having.
 #
@@ -122,7 +122,7 @@ load_config() {
   HOST="0.0.0.0"
   PORT=8000
   API_KEY_FILE="$REPO_DIR/run/api-key"
-  SERVED_MODEL_NAME="Upinel-AIOS"
+  SERVED_MODEL_NAME="Upinel-AIOS-MLX"
   RATE_LIMIT=0
   FAN_MODE="default"
   NGRAM_PREWARM="auto"

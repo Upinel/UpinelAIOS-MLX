@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the UpinelAIOS server.
+# Start the UpinelAIOS-MLX server.
 #
 #   ./start.sh                 start in the background (default)
 #   ./start.sh --foreground    run attached to this terminal (Ctrl-C to stop)
@@ -32,7 +32,7 @@ if [[ -n "$MODEL_OVERRIDE" ]]; then
   info "Model override for this run: $MODEL_REPO"
 fi
 
-step "UpinelAIOS server"
+step "UpinelAIOS-MLX server"
 
 # ── preflight ────────────────────────────────────────────────────────────────
 is_apple_silicon || die "This bundle needs an Apple Silicon Mac."

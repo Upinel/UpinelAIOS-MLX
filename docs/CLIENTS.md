@@ -1,11 +1,11 @@
 # Connecting your agents
 
-Point any OpenAI-compatible client at UpinelAIOS. It speaks Chat Completions,
+Point any OpenAI-compatible client at UpinelAIOS-MLX. It speaks Chat Completions,
 an Anthropic-compatible `/v1/messages`, and streaming tool calls in both shapes.
 
 ```
 Base URL:  http://<mac-lan-ip>:8000/v1
-Model:     Upinel-AIOS             (or whatever SERVED_MODEL_NAME says)
+Model:     Upinel-AIOS-MLX             (or whatever SERVED_MODEL_NAME says)
 API key:   the contents of run/api-key
 ```
 
@@ -78,7 +78,7 @@ request if it knows how to pass template kwargs:
 
 ```json
 {
-  "model": "Upinel-AIOS",
+  "model": "Upinel-AIOS-MLX",
   "messages": [{"role": "user", "content": "hi"}],
   "chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "medium"}
 }
@@ -123,7 +123,7 @@ Choose the OpenAI-compatible provider and set:
 
 ```
 Base URL:  http://<mac-ip>:8000/v1
-Model:     Upinel-AIOS
+Model:     Upinel-AIOS-MLX
 API Key:   <your key>
 ```
 
@@ -132,7 +132,7 @@ API Key:   <your key>
 ```bash
 export OPENAI_API_BASE="http://<mac-ip>:8000/v1"
 export OPENAI_API_KEY="$(cat run/api-key)"
-aider --model openai/Upinel-AIOS
+aider --model openai/Upinel-AIOS-MLX
 ```
 
 ## OpenAI Python SDK
@@ -143,7 +143,7 @@ from openai import OpenAI
 client = OpenAI(base_url="http://192.168.1.20:8000/v1", api_key="YOUR_KEY")
 
 stream = client.chat.completions.create(
-    model="Upinel-AIOS",
+    model="Upinel-AIOS-MLX",
     messages=[{"role": "user", "content": "Write a haiku about memory bandwidth."}],
     max_tokens=512,
     stream=True,

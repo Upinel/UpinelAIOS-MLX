@@ -8,7 +8,7 @@
 #   ./model_download.sh --switch 9b     download if needed, set it as the
 #                                       default in env.conf, and restart
 #
-# Every known model is an uncensored fine-tune. UpinelAIOS does not ship or
+# Every known model is an uncensored fine-tune. UpinelAIOS-MLX does not ship or
 # suggest aligned models.
 #
 # Downloads resume, so re-running after an interruption is safe and cheap.

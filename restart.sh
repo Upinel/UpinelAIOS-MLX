@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restart the UpinelAIOS server, reloading env.conf.
+# Restart the UpinelAIOS-MLX server, reloading env.conf.
 #
 #   ./restart.sh              graceful stop, then start with the current env.conf
 #   ./restart.sh --force      SIGKILL on stop if the graceful path hangs
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-step "UpinelAIOS restart"
+step "UpinelAIOS-MLX restart"
 
 # ── what is about to change ──────────────────────────────────────────────────
 if [[ -f "$CONFIG_SNAPSHOT_FILE" ]] && ! diff -q <(config_fingerprint) \

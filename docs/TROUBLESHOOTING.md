@@ -102,7 +102,7 @@ cat run/dashboard.err        # the traceback, with the frame number
 ```
 
 Include that file if you report it. Restarting `./status.sh` clears the fault;
-no other part of UpinelAIOS is affected, because the dashboard is read-only and
+no other part of UpinelAIOS-MLX is affected, because the dashboard is read-only and
 never talks to the model directly.
 
 ## The server will not start
@@ -177,7 +177,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $(cat run/api-key)" \
   -d '{
-    "model": "Upinel-AIOS",
+    "model": "Upinel-AIOS-MLX",
     "messages": [{"role":"user","content":"Create /tmp/x.txt containing hi. Use the tool."}],
     "tools": [{"type":"function","function":{
       "name":"write_file",

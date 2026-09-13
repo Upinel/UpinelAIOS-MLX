@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Real-time dashboard for the UpinelAIOS server.
+Real-time dashboard for the UpinelAIOS-MLX server.
 
   ./status.sh                 live dashboard, 1s refresh, Ctrl-C to exit
   ./status.sh --once          one-shot summary (scripts, logs)
@@ -60,7 +60,7 @@ HIDE_CURSOR, SHOW_CURSOR = "\033[?25l", "\033[?25h"
 # Window/tab title. OSC 0 sets icon + title, OSC 2 the window title; Terminal
 # and iTerm2 both honour them. Re-asserted every frame so nothing else can
 # claim the heading.
-WINDOW_TITLE = "UpinelAIOS Status"
+WINDOW_TITLE = "UpinelAIOS-MLX Status"
 SET_TITLE = f"\033]0;{WINDOW_TITLE}\007\033]2;{WINDOW_TITLE}\007"
 CLEAR_TITLE = "\033]0;\007\033]2;\007"
 
@@ -1102,14 +1102,14 @@ class Dashboard:
         mm, ss = divmod(rem, 60)
 
         L = []
-        title = f"{BOLD}UpinelAIOS{RESET}"
+        title = f"{BOLD}UpinelAIOS-MLX{RESET}"
         status = (f"{GREEN}\u25cf serving{RESET}" if s["server_up"]
                   else f"{RED}\u25cf not running{RESET}")
         clock = f"up {hh:02d}:{mm:02d}:{ss:02d}"
         pad = max(1, width - len(strip_ansi(title)) - len(strip_ansi(status))
                   - len(clock) - 4)
         L.append(f"{title}{' ' * pad}{status}  {DIM}{clock}{RESET}")
-        L.append(f"{DIM}  Upinel's One-Click AI Agent Server OS for Mac{RESET}")
+        L.append(f"{DIM}  Upinel's One-Click AI Agent Server OS for Mac (MLX){RESET}")
         L.append(DIM + "\u2500" * width + RESET)
 
         key = cfg.get("api_key") or "(none - loopback only)"
@@ -1568,8 +1568,8 @@ class Dashboard:
 # ── one-shot report (previously status.sh) ───────────────────────────────────
 def print_once(cfg, snap):
     s = snap
-    print(f"\n{BOLD}UpinelAIOS{RESET} {DIM}- "
-          f"Upinel's One-Click AI Agent Server OS for Mac{RESET}\n")
+    print(f"\n{BOLD}UpinelAIOS-MLX{RESET} {DIM}- "
+          f"Upinel's One-Click AI Agent Server OS for Mac (MLX){RESET}\n")
 
     print(f"{BOLD}Model{RESET}")
     print(f"  {'name':<18} {cfg['model_repo']}")

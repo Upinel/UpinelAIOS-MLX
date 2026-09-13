@@ -7,7 +7,7 @@ Client-side timing, so the numbers are what a client actually experiences:
   decode = (completion_tokens - 1) / (last_chunk_time - first_chunk_time)
 
 Usage:
-  bench.py --url http://127.0.0.1:8000 --model Upinel-AIOS \
+  bench.py --url http://127.0.0.1:8000 --model Upinel-AIOS-MLX \
            --contexts 512,8192,32768,131072 --max-tokens 128
 """
 
@@ -151,7 +151,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default="http://127.0.0.1:8000")
-    ap.add_argument("--model", default="Upinel-AIOS")
+    ap.add_argument("--model", default="Upinel-AIOS-MLX")
     ap.add_argument("--api-key", default=None)
     ap.add_argument("--api-key-file", default=None)
     ap.add_argument("--contexts", default="512,8192,32768")

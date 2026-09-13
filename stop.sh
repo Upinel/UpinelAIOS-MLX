@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop the UpinelAIOS server.
+# Stop the UpinelAIOS-MLX server.
 #
 #   ./stop.sh            graceful shutdown (recommended)
 #   ./stop.sh --force    SIGKILL - only if graceful stop hangs

@@ -1,10 +1,21 @@
-<h1 align="center">UpinelAIOS</h1>
+<h1 align="center">UpinelAIOS-MLX</h1>
 
-<p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac</b><br>
+<p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac (MLX)</b><br>
 A local, uncensored, OpenAI-compatible MLX (MTPLX) agent endpoint on your own Apple Silicon Mac.<br>
 One command to install. One command to serve. Your data never leaves the LAN.</p>
 
 ---
+
+> **Sister project: [UpinelAIOS-GGUF](https://github.com/Upinel/UpinelAIOS-GGUF)** —
+> the same one-click agent server built on **llama.cpp** rather than MLX.
+> That one serves both **Gemma 4** and **Qwen 3.8** from GGUF, and is the only
+> one of the two that can run an uncensored Gemma 4 at all (MTPLX needs a
+> target/assistant pair, and the only pair in existence is built from Google's
+> aligned models). This one is the faster choice for Qwen specifically, because
+> MTPLX's MTP speculative decoding beats llama.cpp's MTP on Metal.
+>
+> **Rule of thumb:** serving Qwen → this project. Serving Gemma 4, or anything
+> else in GGUF → UpinelAIOS-GGUF.
 
 A portable, one-command **Qwen3.8-27B uncensored agent endpoint** for Apple
 Silicon Macs, tuned for maximum tokens/sec and long-context agent work.
@@ -22,7 +33,7 @@ live dashboard for CPU, GPU, memory and token throughput
 
 Clone it, run `./install.sh`, run `./start.sh`. Nothing else.
 
-**What "Server OS" means here, precisely:** UpinelAIOS is not an operating
+**What "Server OS" means here, precisely:** UpinelAIOS-MLX is not an operating
 system. It is a self-contained serving stack — runtime, model, configuration,
 lifecycle, telemetry and diagnostics — that turns a Mac into an agent server
 appliance with a single command. It installs nothing into your system beyond
@@ -131,7 +142,7 @@ does not silently reuse the wrong depth.
 ## Quick start
 
 ```bash
-git clone https://github.com/upinel/UpinelAIOS && cd UpinelAIOS
+git clone https://github.com/upinel/UpinelAIOS-MLX && cd UpinelAIOS-MLX
 
 ./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
@@ -179,7 +190,7 @@ the OpenAI Python SDK.
 `./status.sh` is a live dashboard, refreshed once a second:
 
 ```
-  UpinelAIOS                                        ● serving  up 02:14:33
+  UpinelAIOS-MLX                                        ● serving  up 02:14:33
   ──────────────────────────────────────────────────────────────────────────────
   itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
   sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
@@ -251,7 +262,7 @@ silently disabled when stdout is not a terminal.
 machine-readable snapshot, `--key` prints only the API key (handy for
 `export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
 
-The window heading is pinned to **UpinelAIOS Status** for as long as the
+The window heading is pinned to **UpinelAIOS-MLX Status** for as long as the
 dashboard runs, and released when you exit. This needs saying because it is not
 automatic: Terminal.app titles the window from whichever process is in front of
 the tty, and a dashboard that shells out to `lsof`, `ioreg` and `pmset` once a
@@ -295,7 +306,7 @@ launch, so **editing the file has no effect until you restart**. That is what
 
 ```bash
 $ ./restart.sh
-UpinelAIOS restart
+UpinelAIOS-MLX restart
 
   env.conf changed since the server last started:
     CONTEXT_WINDOW         131072  ->  204800
@@ -306,7 +317,7 @@ UpinelAIOS restart
 
   Starting with:
     model      itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
-    served as  Upinel-AIOS
+    served as  Upinel-AIOS-MLX
     context    204800   KV off   MTP depth 2
     profile    sustained   thinking high   history scoped
 
@@ -441,7 +452,7 @@ machine.
 
 ### Models — uncensored only
 
-**Every model UpinelAIOS ships or suggests is an uncensored fine-tune.** That is
+**Every model UpinelAIOS-MLX ships or suggests is an uncensored fine-tune.** That is
 a product rule, not a coincidence: this endpoint exists so you can run a model
 that will not refuse you, and there is no point being fast at something that
 won't answer.
