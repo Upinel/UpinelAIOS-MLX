@@ -945,6 +945,16 @@ So: making a video about it, reviewing it, or using it on stream to generate
 content is free, forever, no permission needed — tell us and carry on. Selling
 it, or selling something that runs on it, is the thing to ask about.
 
+> **One licence file, both projects.** `LICENSE` is byte-identical in
+> UpinelAIOS-MLX and UpinelAIOS-GGUF, and its scope clause covers both editions,
+> so you never have to work out which terms apply to which repo. To confirm the
+> two have not drifted:
+>
+> ```bash
+> shasum -a 256 LICENSE
+> # 4d8d0d63f9c825904295d1cf949dd0dfee36366b36c0c6c3142eaf42e782a241
+> ```
+
 This is a **source-available** licence, not an open-source one: the
 [OSI definition](https://opensource.org/osd) requires that a licence permit
 commercial use, which this one deliberately does not. If you need a commercial

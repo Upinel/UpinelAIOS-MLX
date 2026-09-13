@@ -4,7 +4,17 @@ Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
 
 Homepage:  https://upinel.com
 Contact:   dev@upinel.com
-Project:   UpinelAIOS-MLX
+Projects:  UpinelAIOS-GGUF and UpinelAIOS-MLX
+
+This licence file is identical in both UpinelAIOS repositories. They are two
+editions of the same work by the same author, released under the same terms, so
+this single set of terms governs both. A Derivative Work of either edition owes
+the same attribution and the same commercial-use conditions.
+
+Nothing here is per-repository: where the terms refer to "the Software", they
+mean the covered material in either edition (see section 3), and a licence or
+permission granted in writing for one edition does not automatically extend to
+the other, so say which you mean when you ask.
 
 ─────────────────────────────────────────────────────────────────────────────
 PLAIN-ENGLISH SUMMARY (not part of the terms; if it conflicts with them, the
@@ -79,17 +89,20 @@ TERMS AND CONDITIONS
 
    3.1 COVERED SOFTWARE (included in this License)
 
-   This License covers all original material written for the UpinelAIOS
-   projects by the Licensor, which is:
+   This License covers BOTH editions - UpinelAIOS-GGUF (the llama.cpp/GGUF
+   edition) and UpinelAIOS-MLX (the MLX/MTPLX edition) - and all original
+   material written for either of them by the Licensor, which is:
 
      (a) the shell entry points - install.sh, start.sh, stop.sh, restart.sh,
-         status.sh, chat.sh, model_download.sh, service.sh;
+         status.sh, chat.sh and model_download.sh (both editions), plus
+         service.sh (MLX edition);
 
-     (b) the shell libraries - lib/common.sh, lib/preflight.sh,
-         lib/fetch-model.sh, lib/build-fastmtp.sh;
+     (b) the shell libraries - lib/common.sh, lib/preflight.sh and
+         lib/fetch-model.sh (both editions), plus lib/build-fastmtp.sh (GGUF
+         edition);
 
      (c) the Python programs - lib/chat.py, lib/dashboard.py,
-         lib/diff_config.py, lib/tools-template.py;
+         lib/diff_config.py and lib/tools-template.py;
 
      (d) the benchmark and verification tools under bench/;
 
@@ -102,43 +115,54 @@ TERMS AND CONDITIONS
          every other original part of the above, including any update, port or
          modification the Licensor releases.
 
+   A file listed above is covered whether it appears in one edition or both.
+   The two editions share most of their code, so a file present in both is the
+   same covered material; where one edition has a file the other does not, that
+   file is still covered here.
+
    3.2 EXCLUDED COMPONENTS (not covered by this License)
 
    The following are NOT covered by this License. They are the work of other
    people, they are not relicensed here, and Your use of them is governed
-   entirely by their own terms:
+   entirely by their own terms. The edition that uses each is noted, because
+   the two editions do not have the same dependencies:
 
      (a) llama.cpp, including libllama, libggml and the minja chat-template
-         engine - MIT Licence, copyright the llama.cpp contributors;
+         engine - MIT Licence, copyright the llama.cpp contributors (GGUF
+         edition);
 
-     (b) MLX - MIT Licence, copyright Apple Inc.;
+     (b) MLX - MIT Licence, copyright Apple Inc. (MLX edition);
 
      (c) MTPLX - Apache-2.0, copyright Youssof Altoukhi, and carrying its own
-         NOTICE file with a mandatory in-product attribution requirement (see
-         section 3.3);
+         NOTICE file with a mandatory in-product attribution requirement (MLX
+         edition; see section 3.3);
 
      (d) Gemma 4 models and any fine-tune of them - Apache-2.0, copyright
          Google LLC, and additionally subject to Google's Prohibited Use Policy,
-         which this License neither grants nor overrides;
+         which this License neither grants nor overrides (GGUF edition);
 
      (e) Qwen models and any fine-tune of them, including Qwen3.5, Qwen3.6 and
-         Qwen3.8 - Apache-2.0, copyright the Qwen team / Alibaba Group;
+         Qwen3.8 - Apache-2.0, copyright the Qwen team / Alibaba Group (both
+         editions);
 
      (f) third-party model repositories, quantisations and conversions,
          including those published by HauhauCS, mradermacher, llmfan46,
-         OS-Software, itrejomx, barozp, Foresee and hawhyhb;
+         OS-Software, itrejomx, barozp, Foresee and hawhyhb (both editions);
 
      (g) the FastMTP patch, which is published in a third-party model
-         repository and merely downloaded and applied by lib/build-fastmtp.sh;
+         repository and merely downloaded and applied by lib/build-fastmtp.sh
+         (GGUF edition);
 
      (h) all model weights and GGUF or safetensors files of any kind. No model
-         weights are distributed under this License;
+         weights are distributed under this License (both editions);
 
      (i) Homebrew and its formulae (BSD-2-Clause), CMake (BSD-3-Clause), the
-         Hugging Face Hub, and the Python standard library (PSF Licence);
+         Hugging Face Hub, and the Python standard library (PSF Licence) (both
+         editions);
 
      (j) any other third-party library, tool, model or service that the
-         Software calls, downloads, builds against, or interoperates with.
+         Software calls, downloads, builds against, or interoperates with,
+         including anything used by only one edition.
 
    3.3 THIRD-PARTY TERMS STILL APPLY
 
