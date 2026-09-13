@@ -625,6 +625,18 @@ def sparkline(values, width=40):
 
 CHART_BLOCKS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"
 
+# Box-drawing glyphs as named constants rather than inline escapes.
+#
+# These used to sit inside f-string replacement fields - f"{SHADE * barw}" -
+# which is only legal from Python 3.12 (PEP 701). On anything older the file
+# does not even parse: "SyntaxError: f-string expression part cannot include a
+# backslash", pointing at a line that looks perfectly fine. The failure lands
+# on whatever machine happens to have an older python3, so it shows up on some
+# testing devices and not others. Keeping the literals out of the fields makes
+# the file parse on every supported version.
+SHADE = "\u2591"   # ░  light shade, for empty gauge cells
+RULE = "\u2500"    # ─  horizontal rule
+
 
 def line_chart(values, width, height=4):
     """
@@ -1145,7 +1157,7 @@ class Dashboard:
         def gauge(label, pct, text, barw=16):
             if pct is None:
                 return (f"  {BOLD}{label:<5}{RESET} "
-                        f"{DIM}{'\u2591' * barw}   {'--':>7}{RESET}")
+                        f"{DIM}{SHADE * barw}   {'--':>7}{RESET}")
             return (f"  {BOLD}{label:<5}{RESET} "
                     f"{color_for(pct)}{bar(pct, barw)}{RESET} {text:>7}")
 
@@ -1163,7 +1175,7 @@ class Dashboard:
             left.append(f"  {BOLD}ANE  {RESET} {GREEN}{bar(min(100, s['ane'] / 20), 16)}"
                         f"{RESET} {s['ane']:>5.0f}mW")
         else:
-            left.append(f"  {BOLD}ANE  {RESET} {DIM}{'\u2591' * 16}   n/a{RESET}")
+            left.append(f"  {BOLD}ANE  {RESET} {DIM}{SHADE * 16}   n/a{RESET}")
         left.append(gauge("RAM", ram_pct, human_gb(s["ram_used_gb"])))
         left.append(gauge("SWAP", swap_pct,
                           human_gb(s["swap"]["used_gb"]) if s.get("swap") else "--"))
@@ -1191,7 +1203,7 @@ class Dashboard:
                 v = gb(key)
                 right.append(f"  {label:<13}{human_gb(v):>7} "
                              f"{DIM}{bar(100 * v / span, 10)}{RESET}")
-            right.append(f"  {'\u2500' * 13}{'\u2500' * 18}")
+            right.append(f"  {RULE * 13}{RULE * 18}")
             right.append(f"  {'total':<13}{human_gb(total_gb):>7}  "
                          f"{DIM}peak {human_gb(gb('peak_memory_bytes'))}{RESET}")
             right.append(f"  {'host free':<13}{human_gb(s['ram_free_gb']):>7}  "

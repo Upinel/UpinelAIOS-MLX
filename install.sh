@@ -82,6 +82,41 @@ if (( DO_DEPS )); then
   ok "MTPLX ready: $(mtplx --version 2>/dev/null | head -1)"
 
   command -v python3 >/dev/null 2>&1 || warn "python3 not found - ./bench/bench.sh needs it."
+
+  # Every Python file must actually parse with the python3 we are about to use.
+  #
+  # This runs at install time because a syntax error can be version-dependent:
+  # an f-string with a backslash in its replacement field (f"{'\u2591' * n}")
+  # parses on Python 3.12+ and is a hard SyntaxError on anything older. A file
+  # can therefore work perfectly on the machine it was written on and fail on a
+  # user's the moment they run ./status.sh. Checking all of them here turns
+  # that into a clear message at install time instead of a stack trace later.
+  if command -v python3 >/dev/null 2>&1; then
+    BADPY="$(python3 - "$REPO_DIR" <<'PYCHECK'
+import os, sys
+root = sys.argv[1]
+bad = []
+for base, dirs, files in os.walk(root):
+    dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "models", "run")]
+    for f in files:
+        if not f.endswith(".py"):
+            continue
+        p = os.path.join(base, f)
+        try:
+            compile(open(p, encoding="utf-8").read(), p, "exec")
+        except SyntaxError as e:
+            bad.append(f"{os.path.relpath(p, root)}:{e.lineno}: {e.msg}")
+print("\n".join(bad))
+PYCHECK
+)"
+    if [[ -n "$BADPY" ]]; then
+      warn "These Python files do not parse with $(python3 -V 2>&1):"
+      printf '%s\n' "$BADPY" | while IFS= read -r l; do log "    $l"; done
+      die "Fix the syntax or use a newer python3; the dashboard and bench tools will not run."
+    fi
+    ok "Python files parse with $(python3 -V 2>&1 | cut -d' ' -f2)"
+  fi
+
 else
   step "Skipping dependency install"
 fi
