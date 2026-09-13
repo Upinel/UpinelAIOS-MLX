@@ -146,10 +146,43 @@ git clone https://github.com/upinel/UpinelAIOS-MLX && cd UpinelAIOS-MLX
 
 ./install.sh          # scans your Mac, suggests settings, installs everything
 ./start.sh            # serves http://<your-lan-ip>:8000/v1
+./chat.sh             # talk to it right here in the terminal
 ./status.sh           # live dashboard: CPU, GPU, memory, live decode rate
 ./restart.sh          # apply an env.conf change
 ./stop.sh
 ```
+
+### Chatting from the terminal
+
+`./chat.sh` is a streaming chat client for the server you already have running.
+Nothing new is served and nothing is reconfigured — it just connects back to it.
+
+```
+you ▸ Explain what a mixture-of-experts model is, briefly.
+ai  ▸ A mixture-of-experts model splits its feed-forward layers into many
+      expert subnetworks and routes each token to only a few of them...
+        48.2 t/s   prefill 610 t/s   1.1s
+```
+
+Replies stream as they are generated, and every turn ends with its own line of
+telemetry so you can see what the server is doing.
+
+```bash
+./chat.sh                      # start chatting
+./chat.sh --system "You are a terse assistant."
+./chat.sh --temp 0.2           # tighter sampling
+./chat.sh --no-stream          # wait for whole replies
+```
+
+In-session commands: `/help`, `/reset`, `/system <text>`, `/thinking`,
+`/temp <0..2>`, `/stats`, `/save <file>`, `/clear`, `/exit`. `Ctrl-C` stops a
+reply without quitting; `Ctrl-D` leaves.
+
+`chat.sh` is the same client as the sister GGUF project's, and `/thinking`
+behaves slightly differently in each: llama.cpp takes thinking as a per-request
+`chat_template_kwargs`, so there `/thinking on` takes effect on the next turn,
+while MTPLX takes it as a live server setting, so this build points you at
+`./status.sh --thinking` instead of pretending to change it.
 
 `install.sh` starts by scanning your hardware — chip, GPU cores, unified memory,
 free disk — and printing a table of suggested settings for **your** Mac next to
