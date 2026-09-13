@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+#  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+#  Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
+#
+#  Upinel Personal Free License: free for personal use, commercial use by
+#  written permission, and anything built from this must credit the author.
+#  See LICENSE.
+#
+#  "Make it work, make it right, make it fast - then measure it, because
+#   the third one is only a claim until the numbers agree."
+# ─────────────────────────────────────────────────────────────────────────────
 # Resumable Hugging Face model fetcher - no huggingface_hub / pip dependency.
 #
 #   lib/fetch-model.sh <owner/repo> <destination-dir>

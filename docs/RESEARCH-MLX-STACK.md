@@ -1,3 +1,14 @@
+<!--
+  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+  Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
+
+  Upinel Personal Free License: free for personal use, commercial use by
+  written permission, and anything built from this must credit the author.
+  See LICENSE.
+
+  "Make it work, make it right, make it fast - then measure it, because
+   the third one is only a claim until the numbers agree."
+-->
 # Serving Qwen3.8-27B (`qwen3_5` hybrid + 1-layer MTP head) on MLX / Apple Silicon — technical report
 
 **Target:** M5 Pro, 20-core GPU, 64 GB unified memory, OpenAI-compatible LAN endpoint.

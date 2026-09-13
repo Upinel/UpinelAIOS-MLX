@@ -1,8 +1,28 @@
+<!--
+  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+  Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
+
+  Upinel Personal Free License: free for personal use, commercial use by
+  written permission, and anything built from this must credit the author.
+  See LICENSE.
+
+  "Make it work, make it right, make it fast - then measure it, because
+   the third one is only a claim until the numbers agree."
+-->
 <h1 align="center">UpinelAIOS-MLX</h1>
 
 <p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac (MLX)</b><br>
+<b>Focus on Extreme performance optimisation for AI Agent workflow</b><br>
 A local, uncensored, OpenAI-compatible MLX (MTPLX) agent endpoint on your own Apple Silicon Mac.<br>
 One command to install. One command to serve. Your data never leaves the LAN.</p>
+
+<p align="center">
+  <sub>Built by <b>Nova Upinel Chow</b>, MSc, LLM, BBA, MENSA &nbsp;·&nbsp;
+  <a href="mailto:upinel@me.com">upinel@me.com</a> &nbsp;·&nbsp;
+  <a href="https://upinel.com">upinel.com</a></sub><br>
+  <sub>Free for personal use. Commercial use by written permission.
+  Derivatives must credit the author. See <a href="LICENSE">LICENSE</a>.</sub>
+</p>
 
 ---
 
@@ -903,15 +923,44 @@ already have instead of downloading.
 
 ## Credits and licences
 
+### This project
+
+**UpinelAIOS-MLX is © 2026 Nova Upinel Chow, released under the
+[Upinel Personal Free License](LICENSE).** In short:
+
+| | |
+|---|---|
+| **Personal use** | Free. Use it, change it, share it. |
+| **Commercial use** | Needs the author's written permission — email [upinel@me.com](mailto:upinel@me.com). This includes use inside a company, and any paid product or service built on it. |
+| **Derivatives** | Must credit the author and keep this licence. Fork it, port it, improve it — just leave the name on it. |
+| **Warranty** | None. It is a local inference server; you are responsible for what you run on it. |
+
+This is a **source-available** licence, not an open-source one: the
+[OSI definition](https://opensource.org/osd) requires that a licence permit
+commercial use, which this one deliberately does not. If you need a commercial
+licence, or a different arrangement for your organisation, ask — the answer is
+usually yes, and it is a short conversation.
+
+The author is not a lawyer and this licence has not been reviewed by one. It is
+written to be read and understood rather than to be maximally clever, but if you
+are relying on it commercially, get your own advice.
+
+### Third-party, and a second attribution you must not drop
+
 This bundle is glue: the hard parts belong to other people.
 
 - **[MTPLX](https://github.com/youssofal/MTPLX)** by Youssof Altoukhi — Apache-2.0,
   with a **mandatory in-product attribution requirement**. If you ship something
   built on this, it must display *"Powered by MTPLX — https://github.com/youssofal/MTPLX"*
-  somewhere a user can see it.
+  somewhere a user can see it. That obligation is independent of this project's
+  licence and outlives it: a derivative of UpinelAIOS-MLX owes credit to
+  **both** authors.
 - **[Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B)** — Apache-2.0.
 - **HauhauCS** — the Aggressive uncensored fine-tune.
 - **itrejomx** — the MLX 4-bit MTP conversion used by default.
+
+Third-party components keep their own licences; this project's licence does not
+cover them, and it covers no model weights at all.
 
 Model weights carry their own upstream licences. Uncensored fine-tunes are
 uncensored: you are responsible for how you use the endpoint, and for the fact

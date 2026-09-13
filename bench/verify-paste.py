@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# ─────────────────────────────────────────────────────────────────────────────
+#  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+#  Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
+#
+#  Upinel Personal Free License: free for personal use, commercial use by
+#  written permission, and anything built from this must credit the author.
+#  See LICENSE.
+#
+#  "Make it work, make it right, make it fast - then measure it, because
+#   the third one is only a claim until the numbers agree."
+# ─────────────────────────────────────────────────────────────────────────────
 """Regression tests for multi-line paste handling in lib/chat.py.
 
 The bug these cover: input() returns only the FIRST line of a paste and leaves
