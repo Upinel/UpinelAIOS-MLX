@@ -962,6 +962,33 @@ This bundle is glue: the hard parts belong to other people.
 Third-party components keep their own licences; this project's licence does not
 cover them, and it covers no model weights at all.
 
+### Does this licence conflict with what the project uses?
+
+No, and the reasoning is worth stating rather than asserting:
+
+- **Nothing third-party is redistributed here.** `install.sh` runs
+  `brew install`, and the runtime is started as a separate process and spoken to
+  over HTTP. MIT and Apache-2.0 impose obligations when you distribute their
+  code; nothing is vendored, so nothing of theirs is relicensed, and their
+  notices stay with them.
+- **Everything upstream is permissive** — llama.cpp (MIT), MLX (MIT), MTPLX
+  (Apache-2.0), Gemma 4 and Qwen (Apache-2.0). There is no copyleft anywhere in
+  the dependency tree, which is precisely what makes it possible to license this
+  project's own code restrictively.
+- **Every Python import here is standard library.** There are no third-party
+  Python packages to account for.
+
+The one real incompatibility: because this licence forbids commercial use and
+requires derivatives to stay no more permissive, this code **cannot be combined
+into a GPL or AGPL project**. Both of those permit commercial use, so the terms
+conflict in both directions. Nothing used here is GPL, so it costs nothing
+today — but it does close that door.
+
+MTPLX's own attribution requirement, described above, is a live obligation
+carried by its NOTICE file under Apache-2.0 §4(d). If you *ship* MTPLX — as
+opposed to installing it for yourself — that notice travels with it, and nothing
+in this project's licence can waive it.
+
 Model weights carry their own upstream licences. Uncensored fine-tunes are
 uncensored: you are responsible for how you use the endpoint, and for the fact
 that you just exposed it to your LAN.
