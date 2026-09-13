@@ -1,9 +1,9 @@
 Upinel Personal Free License
-Version 1.0
+Version 1.1
 Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
 
 Homepage:  https://upinel.com
-Contact:   upinel@me.com
+Contact:   dev@upinel.com
 Project:   UpinelAIOS-MLX
 
 ─────────────────────────────────────────────────────────────────────────────
@@ -11,17 +11,24 @@ PLAIN-ENGLISH SUMMARY (not part of the terms; if it conflicts with them, the
 terms below win)
 ─────────────────────────────────────────────────────────────────────────────
 
-  You may use, copy, study, change and share this software for free, as long
-  as it is not for commercial gain.
+  Personal use is free. Use it, change it, share it.
 
-  If you want to use it commercially - including inside a company, as part of
-  a paid product or service, or to make money from it in any way - ask first.
-  Commercial use is allowed only with the author's prior written permission.
+  If you are a YouTuber, streamer, KOL or any other creator, using it in your
+  videos, streams, posts, articles or images is free too - including the money
+  you make from that content. Just email dev@upinel.com to say you are. You do
+  not need a reply and should not wait for one.
 
-  If you build anything from it, or publish a modified version, you must keep
-  the author's name on it and say that it is derived from this project.
+  Anything else commercial - putting it inside a company, selling a product or
+  service built on it - needs the author's written permission first.
 
-  It comes with no warranty. The author is not liable for anything it does.
+  If you build anything from it, keep the author's name on it and say where it
+  came from.
+
+  This licence covers the author's own code in UpinelAIOS. It does not cover
+  llama.cpp, MLX, MTPLX, or any Gemma or Qwen model or weights - those belong
+  to other people and keep their own licences.
+
+  No warranty. The author is not liable for anything it does.
 
 ─────────────────────────────────────────────────────────────────────────────
 TERMS AND CONDITIONS
@@ -29,9 +36,8 @@ TERMS AND CONDITIONS
 
 1. DEFINITIONS
 
-   "Software" means the source code, scripts, configuration, documentation and
-   any other material distributed under this License, including modified
-   versions and works derived from it.
+   "Software" means the material distributed by the Licensor under this
+   License, as defined by the scope in section 3.
 
    "Licensor" means Nova Upinel Chow, the copyright holder.
 
@@ -39,30 +45,115 @@ TERMS AND CONDITIONS
    License. If you act for an organisation, "You" includes that organisation.
 
    "Personal Use" means use by an individual, for that individual's own
-   purposes, in a way that is not Commercial Use.
+   purposes, in a way that is not Commercial Use or Creator Use.
+
+   "Creator Use" means use to make content for an audience, as described in
+   section 5.
 
    "Commercial Use" means any use that is intended for or directed toward
-   commercial advantage or monetary compensation. This includes, without
-   limitation: use in or by a business or other organisation for its internal
-   operations; incorporation into a product or service that is sold, licensed,
-   subscribed to, or otherwise monetised; use to provide a paid or
-   revenue-generating service to third parties; and use in the development of
-   a commercial product, whether or not that product is sold.
+   commercial advantage or monetary compensation, other than Creator Use. This
+   includes, without limitation: use in or by a business or other organisation
+   for its internal operations; incorporation into a product or service that is
+   sold, licensed, subscribed to, or otherwise monetised; use to provide a paid
+   or revenue-generating service to third parties; and use in the development
+   of a commercial product, whether or not that product is sold.
 
    "Derivative Work" means any work, in source or object form, that is based on
    or incorporates the Software, including modified versions, translations,
    ports, reimplementations, and larger works of which the Software forms a
    part.
 
-   "Attribution Notice" means the notice reproduced in section 5 below.
+   "Excluded Components" means the third-party material listed in section 3.2.
+
+   "Attribution Notice" means the notice reproduced in section 7 below.
 
 2. COPYRIGHT
 
    The Software is the copyrighted work of the Licensor. All rights not
    expressly granted by this License are reserved by the Licensor. This License
-   grants rights; it does not transfer ownership of the copyright.
+   grants rights; it does not transfer ownership of the copyright. Copyright in
+   the Excluded Components belongs to their respective owners, not to the
+   Licensor.
 
-3. GRANT FOR PERSONAL USE
+3. SCOPE - WHAT THIS LICENCE COVERS, AND WHAT IT DOES NOT
+
+   3.1 COVERED SOFTWARE (included in this License)
+
+   This License covers all original material written for the UpinelAIOS
+   projects by the Licensor, which is:
+
+     (a) the shell entry points - install.sh, start.sh, stop.sh, restart.sh,
+         status.sh, chat.sh, model_download.sh, service.sh;
+
+     (b) the shell libraries - lib/common.sh, lib/preflight.sh,
+         lib/fetch-model.sh, lib/build-fastmtp.sh;
+
+     (c) the Python programs - lib/chat.py, lib/dashboard.py,
+         lib/diff_config.py, lib/tools-template.py;
+
+     (d) the benchmark and verification tools under bench/;
+
+     (e) env.conf and its comments;
+
+     (f) the documentation - README.md and everything under docs/;
+
+     (g) the model registry, the hardware recommendation rules, the memory and
+         context arithmetic, the on-disk model picker, the author banner, and
+         every other original part of the above, including any update, port or
+         modification the Licensor releases.
+
+   3.2 EXCLUDED COMPONENTS (not covered by this License)
+
+   The following are NOT covered by this License. They are the work of other
+   people, they are not relicensed here, and Your use of them is governed
+   entirely by their own terms:
+
+     (a) llama.cpp, including libllama, libggml and the minja chat-template
+         engine - MIT Licence, copyright the llama.cpp contributors;
+
+     (b) MLX - MIT Licence, copyright Apple Inc.;
+
+     (c) MTPLX - Apache-2.0, copyright Youssof Altoukhi, and carrying its own
+         NOTICE file with a mandatory in-product attribution requirement (see
+         section 3.3);
+
+     (d) Gemma 4 models and any fine-tune of them - Apache-2.0, copyright
+         Google LLC, and additionally subject to Google's Prohibited Use Policy,
+         which this License neither grants nor overrides;
+
+     (e) Qwen models and any fine-tune of them, including Qwen3.5, Qwen3.6 and
+         Qwen3.8 - Apache-2.0, copyright the Qwen team / Alibaba Group;
+
+     (f) third-party model repositories, quantisations and conversions,
+         including those published by HauhauCS, mradermacher, llmfan46,
+         OS-Software, itrejomx, barozp, Foresee and hawhyhb;
+
+     (g) the FastMTP patch, which is published in a third-party model
+         repository and merely downloaded and applied by lib/build-fastmtp.sh;
+
+     (h) all model weights and GGUF or safetensors files of any kind. No model
+         weights are distributed under this License;
+
+     (i) Homebrew and its formulae (BSD-2-Clause), CMake (BSD-3-Clause), the
+         Hugging Face Hub, and the Python standard library (PSF Licence);
+
+     (j) any other third-party library, tool, model or service that the
+         Software calls, downloads, builds against, or interoperates with.
+
+   3.3 THIRD-PARTY TERMS STILL APPLY
+
+   The Excluded Components keep their own licences and notices. Nothing in this
+   License grants You any right in them, and nothing in this License reduces,
+   replaces or waives any obligation You have under their terms. You are
+   responsible for complying with them.
+
+   In particular, MTPLX requires that any product, app or service built on it
+   display "Powered by MTPLX - https://github.com/youssofal/MTPLX" where a user
+   can see it. That requirement travels in MTPLX's NOTICE file under Apache-2.0
+   section 4(d). It is independent of, and additional to, the attribution
+   required by section 7 of this License. A Derivative Work must satisfy both.
+
+4. GRANT FOR PERSONAL USE
 
    Subject to the conditions of this License, the Licensor grants You a
    worldwide, royalty-free, non-exclusive, non-transferable license to:
@@ -70,19 +161,71 @@ TERMS AND CONDITIONS
      (a) use, run and install the Software for Personal Use;
 
      (b) copy and redistribute the Software, in whole or in part, for Personal
-         Use, provided the conditions in sections 5 and 6 are met;
+         Use, provided the conditions in sections 7 and 8 are met;
 
      (c) modify the Software and create Derivative Works, for Personal Use,
-         provided the conditions in sections 5 and 6 are met.
+         provided the conditions in sections 7 and 8 are met.
 
-4. COMMERCIAL USE REQUIRES WRITTEN PERMISSION
+5. CREATOR USE - FREE FOR YOUTUBERS, KOLS AND OTHER CREATORS
+
+   If You make content for an audience - a YouTuber, streamer, podcaster,
+   blogger, newsletter writer, reviewer, educator, or any other creator or key
+   opinion leader ("KOL") - You may use the Software to make that content, and
+   publish and monetise it, free of charge and without waiting for the
+   Licensor's agreement.
+
+   This covers, in particular:
+
+     (a) videos, streams and podcasts about, demonstrating, or produced with
+         the Software;
+
+     (b) posts, articles, threads, tutorials and reviews on websites, blogs or
+         social media;
+
+     (c) text, images, code and any other output produced with the Software and
+         published in that content;
+
+     (d) monetising any of the above however the platform allows - advertising,
+         sponsorships, memberships, subscriptions, affiliate links, tips,
+         superchats, or creator-fund payouts.
+
+   Despite section 6, none of the above is Commercial Use, no permission is
+   required for it, and no fee is payable for it.
+
+   THE ONE CONDITION: email dev@upinel.com to say that You are using it this
+   way, before or at the time You first publish. Say who You are and link or
+   name the channel or publication. That is the entire requirement.
+
+   You do not need a reply, and You should not wait for one. The permission
+   takes effect the moment You send the notice, whether or not it is read.
+   Notifying is a condition of this section rather than a courtesy - but if You
+   publish first and notify later, the permission applies from the moment You
+   send it. A late email is better than none, and a bounced email is not a
+   breach; keep a copy and carry on.
+
+   This section does NOT cover, and those uses remain Commercial Use under
+   section 6:
+
+     (a) selling, licensing or charging for the Software or a Derivative Work
+         itself, as distinct from making content about it;
+
+     (b) hosting the Software for third parties as a paid or monetised service;
+
+     (c) using the Software to provide a product or service You sell, where the
+         Software is doing the work rather than being the subject of Your
+         content;
+
+     (d) training, fine-tuning or distilling another model on output produced
+         with the Software, for commercial use or commercial distribution.
+
+6. COMMERCIAL USE REQUIRES WRITTEN PERMISSION
 
    Commercial Use of the Software is NOT permitted by this License.
 
    Commercial Use requires the Licensor's prior written permission, granted by
    a separate written agreement. To request one, contact:
 
-       upinel@me.com
+       dev@upinel.com
 
    The Licensor may grant, refuse, or condition such permission at their sole
    discretion, and may charge a fee. No Commercial Use is authorised until a
@@ -92,7 +235,7 @@ TERMS AND CONDITIONS
    Commercial Use without that permission is a breach of this License and an
    infringement of the Licensor's copyright.
 
-5. ATTRIBUTION
+7. ATTRIBUTION
 
    Any Derivative Work, and any redistribution of the Software or a Derivative
    Work, must include the following Attribution Notice, in a place a human will
@@ -100,7 +243,7 @@ TERMS AND CONDITIONS
    or LICENSE file), and additionally in the source file headers of any file
    that is copied or adapted from the Software:
 
-       Based on UpinelAIOS by Nova Upinel Chow (upinel.com, upinel@me.com).
+       Based on UpinelAIOS by Nova Upinel Chow (upinel.com, dev@upinel.com).
        Copyright (c) 2026 Nova Upinel Chow. Used under the Upinel Personal Free
        License.
 
@@ -110,13 +253,13 @@ TERMS AND CONDITIONS
    You may not remove, obscure, or alter any copyright notice, author name, or
    Attribution Notice in the Software or in a Derivative Work.
 
-6. REDISTRIBUTION AND SHARE-ALIKE
+8. REDISTRIBUTION AND SHARE-ALIKE
 
    You may redistribute the Software and Derivative Works only if:
 
      (a) this License is included in full, unchanged;
 
-     (b) the Attribution Notice in section 5 is included as described there;
+     (b) the Attribution Notice in section 7 is included as described there;
 
      (c) any recipient is told the terms under which they receive it; and
 
@@ -125,7 +268,7 @@ TERMS AND CONDITIONS
          Software, or a Derivative Work, under a license that would permit
          Commercial Use or would drop the attribution requirement.
 
-7. NO TRADEMARK RIGHTS
+9. NO TRADEMARK RIGHTS
 
    This License grants no rights in the names "UpinelAIOS", "Upinel", or any
    related name, logo or trade mark. You may not use them to endorse or promote
@@ -133,22 +276,7 @@ TERMS AND CONDITIONS
    prior written permission. Factual statements of the form "derived from
    UpinelAIOS" are permitted and encouraged.
 
-8. THIRD-PARTY COMPONENTS
-
-   This License covers only the Licensor's own work. The Software builds on,
-   downloads, or interoperates with third-party components that carry their own
-   licenses, including llama.cpp (MIT), MLX, and MTPLX, and third-party model
-   weights published by others. Those components are not relicensed here, and
-   Your use of them is governed by their own terms, which You are responsible
-   for complying with. No model weights are distributed under this License.
-
-   MTPLX in particular carries its own mandatory attribution requirement: any
-   work built on it must display "Powered by MTPLX - https://github.com/youssofal/MTPLX"
-   where a user can see it. That obligation is independent of, and additional
-   to, the attribution required by section 5 of this License. A Derivative Work
-   of this Software must satisfy both.
-
-9. NO WARRANTY
+10. NO WARRANTY
 
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -156,7 +284,7 @@ TERMS AND CONDITIONS
    DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE, UNINTERRUPTED, OR FIT
    FOR ANY PARTICULAR PURPOSE.
 
-10. LIMITATION OF LIABILITY
+11. LIMITATION OF LIABILITY
 
    TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
    LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
@@ -167,24 +295,24 @@ TERMS AND CONDITIONS
 
    Nothing in this License limits liability that cannot be limited by law.
 
-11. TERMINATION
+12. TERMINATION
 
    This License, and the rights it grants, terminate automatically if You
    breach any of its terms. On termination You must stop using and distributing
    the Software and destroy or delete copies in Your control, except where
-   retention is required by law. Sections 2, 5, 6, 7, 8, 9, 10 and 12 survive
+   retention is required by law. Sections 2, 3, 7, 8, 9, 10, 11 and 13 survive
    termination.
 
    If the breach is cured within 30 days of Your first becoming aware of it,
    the License is reinstated as of the date it was terminated, provided that no
    Commercial Use took place during the breach.
 
-12. GOVERNING LAW
+13. GOVERNING LAW
 
    This License is governed by the laws of England and Wales, without regard to
    its conflict of law provisions.
 
-13. ACCEPTANCE
+14. ACCEPTANCE
 
    By using, copying, modifying or distributing the Software, You accept these
    terms. If You do not accept them, do not use the Software.

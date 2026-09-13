@@ -1,10 +1,11 @@
 <!--
-  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  dev@upinel.com  ·  upinel.com
   Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
 
-  Upinel Personal Free License: free for personal use, commercial use by
-  written permission, and anything built from this must credit the author.
-  See LICENSE.
+  Upinel Personal Free License: free for personal use, and free for creators
+  (YouTubers, KOLs) to make content with - just email dev@upinel.com to say so.
+  Other commercial use needs written permission. Derivatives must credit the
+  author. Covers this project's own code only. See LICENSE.
 
   "Make it work, make it right, make it fast - then measure it, because
    the third one is only a claim until the numbers agree."
@@ -19,8 +20,11 @@ One command to install. One command to serve. Your data never leaves the LAN.</p
 <p align="center">
   <sub>Built by <b>Nova Upinel Chow</b>, MSc, LLM, BBA, MENSA &nbsp;·&nbsp;
   <a href="mailto:upinel@me.com">upinel@me.com</a> &nbsp;·&nbsp;
+  <a href="mailto:dev@upinel.com">dev@upinel.com</a> &nbsp;·&nbsp;
   <a href="https://upinel.com">upinel.com</a></sub><br>
-  <sub>Free for personal use. Commercial use by written permission.
+  <sub>Free for personal use, and free for creators — YouTubers, KOLs, streamers
+  and bloggers, <b>including the money you make</b>: just email dev@upinel.com to
+  say so, no reply needed. Other commercial use by written permission.
   Derivatives must credit the author. See <a href="LICENSE">LICENSE</a>.</sub>
 </p>
 
@@ -931,9 +935,15 @@ already have instead of downloading.
 | | |
 |---|---|
 | **Personal use** | Free. Use it, change it, share it. |
-| **Commercial use** | Needs the author's written permission — email [upinel@me.com](mailto:upinel@me.com). This includes use inside a company, and any paid product or service built on it. |
+| **Creators — YouTubers, KOLs, streamers, bloggers** | Free, **including the money you make from the content**. Videos, streams, posts, articles, images, tutorials — and any text or images you generate with it and publish. Just email [dev@upinel.com](mailto:dev@upinel.com) to say you're doing it. **You do not need a reply and should not wait for one** — the permission takes effect the moment you hit send. |
+| **Other commercial use** | Needs the author's written permission — email [dev@upinel.com](mailto:dev@upinel.com). This covers use inside a company, selling a product or service built on it, and hosting it for others as a paid service. |
 | **Derivatives** | Must credit the author and keep this licence. Fork it, port it, improve it — just leave the name on it. |
+| **Scope** | Covers this project's own code only. llama.cpp, MLX, MTPLX, Gemma 4, Qwen, and every model weight belong to other people and keep their own licences — see [section 3 of the licence](LICENSE) for the full list. |
 | **Warranty** | None. It is a local inference server; you are responsible for what you run on it. |
+
+So: making a video about it, reviewing it, or using it on stream to generate
+content is free, forever, no permission needed — tell us and carry on. Selling
+it, or selling something that runs on it, is the thing to ask about.
 
 This is a **source-available** licence, not an open-source one: the
 [OSI definition](https://opensource.org/osd) requires that a licence permit

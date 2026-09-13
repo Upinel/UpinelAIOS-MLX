@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # ─────────────────────────────────────────────────────────────────────────────
-#  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  upinel@me.com  ·  upinel.com
+#  Nova Upinel Chow, MSc, LLM, BBA, MENSA  ·  dev@upinel.com  ·  upinel.com
 #  Copyright (c) 2026 Nova Upinel Chow. All rights reserved.
 #
-#  Upinel Personal Free License: free for personal use, commercial use by
-#  written permission, and anything built from this must credit the author.
-#  See LICENSE.
+#  Upinel Personal Free License: free for personal use, and free for creators
+#  (YouTubers, KOLs) to make content with - just email dev@upinel.com to say so.
+#  Other commercial use needs written permission. Derivatives must credit the
+#  author. Covers this project's own code only. See LICENSE.
 #
 #  "Make it work, make it right, make it fast - then measure it, because
 #   the third one is only a claim until the numbers agree."
