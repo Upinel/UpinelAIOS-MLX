@@ -68,7 +68,7 @@ Built and measured on an **M5 Pro / 20-core GPU / 64 GB**, serving
 [MTPLX](https://github.com/youssofal/MTPLX):
 
 ```
-61-83 tok/s decode                  (2.6-3.4x over autoregressive)
+74-88 tok/s decode                  (MTP speculative decoding on, measured)
 128K context default, 262K capable
 OpenAI-compatible API on your LAN
 live dashboard for CPU, GPU, memory and token throughput
@@ -282,9 +282,9 @@ row marked with a verdict for *your* memory:
 
 ```
     #  ALIAS      SIZE   VERDICT              NOTE
-    1  4bit       15 GB  fits comfortably     dense 27B, ~50 tok/s - the fidelity pick
+    1  4bit       15 GB  fits comfortably     dense 27B, ~29 tok/s - the fidelity pick
     ...
-    6  moe        22 GB  RECOMMENDED          35B MoE, ~3B active - the fastest here (~83 tok/s)
+    6  moe        22 GB  RECOMMENDED          35B MoE, ~3B active - the fastest here (~88 tok/s)
   Model number:
 ```
 
@@ -316,17 +316,18 @@ The MoE activates ~3B of its 35B, so it reads roughly a fifth as much and goes
 proportionally faster — which is precisely the trade agents want, since an
 agent emits many small tool calls rather than long essays.
 
-Both are uncensored, both are one command apart. Measured here on an M5 Pro, at
-MTP depth 1:
+Both are uncensored, both are one command apart. Measured here on an M5 Pro
+(median of 4–6 runs each; see [Benchmarks](#benchmarks) for the method and the
+spread):
 
 | context | dense 27B (`4bit`) | `moe` (35B-A3B) | gain |
 |---:|---:|---:|---:|
-| 512 | 42–51 t/s | **83 t/s** | ~1.7× |
-| 8,192 | ~38 t/s | **72 t/s** | ~1.9× |
-| 32,768 | ~22 t/s | **61 t/s** | ~2.8× |
+| ~512 | 29 t/s | **88 t/s** | **~3.0×** |
+| ~8,192 | 20 t/s | **76 t/s** | **~3.9×** |
+| ~10,000 | 19 t/s | **74 t/s** | **~3.9×** |
 
-The gap widens with context, which is where agents actually live: at 32k the MoE
-is nearly three times faster. Prefill also improves, from ~440 to ~1,200 t/s.
+The gap widens with context, which is where agents actually live: past 8k the MoE
+is nearly four times faster. Prefill also improves, from ~440 to ~1,200 t/s.
 MTP depth 1 is optimal for the MoE and depth 2 for the dense model; both are
 recorded per model, so switching does not make you re-tune by hand.
 
@@ -593,21 +594,41 @@ between an agent that is usable and one that is not.
 
 ## Benchmarks
 
-### Estimated throughput
+### Measured throughput
 
-**Measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), 4-bit
-27B, MTP depth 2:
+**Re-measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), macOS
+27.0, KV `q8`, `sustained` profile, 128 tokens generated per run, client-side
+decode rate (prefill excluded):
 
-| context | decode | note |
-|---:|---:|---|
-| ~400 tokens | **42–51 t/s** | short turns, cool machine, tuned |
-| ~1,000 tokens | **21–24 t/s** | typical single agent request |
-| ~2,500 tokens | **37 t/s** | |
-| ~10,000 tokens | **17 t/s** | long agent turn, long output |
-| autoregressive, no MTP | 15 t/s | what you get if MTP is off |
+**Dense 27B (`4bit`), MTP depth 2**
 
-Throughput is dominated by **context length**, not by tuning. The same machine
-gives 51 t/s on a short prompt and 17 t/s on a long one.
+| context | decode (median) | range | runs |
+|---:|---:|---:|---:|
+| ~850 tokens | **29 t/s** | 26–34 | 6 |
+| ~7,900 tokens | **20 t/s** | 17–22 | 4 |
+| ~10,000 tokens | **19 t/s** | 18–22 | 6 |
+| autoregressive, MTP off | 15 t/s | | not re-measured |
+
+**MoE 35B-A3B (`moe`), MTP depth 1**
+
+| context | decode (median) | range | runs |
+|---:|---:|---:|---:|
+| ~800 tokens | **88 t/s** | 80–110 | 6 |
+| ~7,900 tokens | **76 t/s** | 71–96 | 4 |
+| ~10,000 tokens | **74 t/s** | 68–91 | 6 |
+
+Decode is **flat once context is past a few thousand tokens**, which is not what
+this section used to claim. The old table showed the dense model dropping from
+42–51 t/s to 21–24 and then *rising* to 37 at 2,500 tokens, which no longer
+describes anything measured. What actually happens: the dense 27B sits near
+29 t/s on short prompts and settles around 19–20 t/s by 8k and stays there; the
+MoE sits near 88 t/s and settles near 75.
+
+**The spread is real, not noise in the tooling.** Individual runs of the same
+model, same prompt and same context ranged 26–34 t/s (dense) and 80–110 t/s
+(MoE). MTP commits a variable number of tokens per forward pass depending on how
+predictable the continuation is, so throughput genuinely varies with the text
+being generated. Quote the median, expect the range.
 
 **Estimated** for other Macs, scaled by memory bandwidth and cross-checked
 against published MTPLX figures. Treat these as order-of-magnitude:
@@ -617,33 +638,35 @@ against published MTPLX figures. Treat these as order-of-magnitude:
 | M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
 | M3 / M4 base | 25–35 t/s | 10–15 t/s |
 | M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
-| **M5 Pro**, dense 27B (measured) | **42–51 t/s** | **17 t/s** |
-| **M5 Pro**, MoE 35B-A3B (measured) | **83 t/s** | **~70 t/s** |
+| **M5 Pro**, dense 27B (measured) | **29 t/s** | **19 t/s** |
+| **M5 Pro**, MoE 35B-A3B (measured) | **88 t/s** | **74 t/s** |
 | M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
 | M3 Ultra | 60–75 t/s | 22–28 t/s |
 
-The MoE's ~10k figure is interpolated between its measured 8k and 32k points
-(72 and 61 t/s); every other figure on those two rows is measured. The 35B-A3B
-row replaces an earlier reading of 78 t/s and 125 t/s, which were the *old*
-`moe` build and a prefill number respectively — see the note under the
-throughput section.
+Every figure on those two rows is measured at the context shown. The 35B-A3B row
+replaces an earlier reading of 78 t/s and 125 t/s, which were the *old* `moe`
+build and a prefill number respectively — see the note under the throughput
+section. The dense 27B row replaces 42–51 t/s and 17 t/s, which could not be
+reproduced: see [Benchmarks](#benchmarks).
 
 The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
-suggests — roughly 51 → 59 t/s on published figures. Beyond a point this model
-stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×.
+suggests. Beyond a point these models stop being purely memory-bandwidth-bound,
+so a 2× wider chip does not give 2×.
 
-#### Can it reach 75 t/s?
+#### Can the 27B reach 75 t/s?
 
-**Not with this model.** The ceiling is arithmetic, not tuning:
+**No.** The ceiling is arithmetic, not tuning:
 
 - The 27B is dense, so every token reads all ~15 GB of 4-bit weights.
-- Measured autoregressive rate is 15 t/s, which implies ~228 GB/s of effective
+- Measured autoregressive rate is ~15 t/s, which implies ~228 GB/s of effective
   bandwidth — already close to what an M5 Pro can sustain.
-- MTP is what beats that limit: it verifies several drafted tokens per weight
-  read. At depth 2 with ~98% acceptance that is ~3 tokens per pass, giving
-  ~45–51 t/s. That is where the measurement lands.
-- 75 t/s would need ~5 tokens per pass. Draft acceptance decays sharply with
-  depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not viable.
+- MTP is what beats that: it verifies several drafted tokens per weight read.
+  At depth 2 that gives roughly 29 t/s on short prompts, decaying to ~19 t/s by
+  8k. Those are the numbers measured above, not the ~45–51 t/s an earlier
+  version of this file claimed.
+- 75 t/s on this model would need ~5 tokens per pass. Draft acceptance decays
+  sharply with depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not
+  viable.
 
 **But 75+ t/s is reachable — with a different model.** A mixture-of-experts
 checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
@@ -652,30 +675,38 @@ the whole reason the MoE is the default.
 
 | context | dense 27B (`4bit`) | MoE (35B-A3B) | gain |
 |---:|---:|---:|---:|
-| 512 | 42–51 t/s | **83 t/s** | ~1.7× |
-| 8,192 | ~38 t/s | **72 t/s** | ~1.9× |
-| 32,768 | ~22 t/s | **61 t/s** | ~2.8× |
+| ~512 | 29 t/s | **88 t/s** | **~3.0×** |
+| ~8,192 | 20 t/s | **76 t/s** | **~3.9×** |
+| ~10,000 | 19 t/s | **74 t/s** | **~3.9×** |
+
+The gain is roughly **3–4×**, not the "~1.7–2×" this table used to show. That
+figure was an artefact of the dense model's old numbers being too high: the MoE
+has not changed, the 27B's baseline was overstated, and correcting it roughly
+doubles the measured advantage of the default.
 
 Prefill improves too, from ~440 to ~1,200 t/s, so long prompts arrive sooner as
-well. The gap widens with context, which is where agents actually live.
+well.
 
 > **An earlier, faster MoE was dropped, and the numbers are worth keeping.**
 > The `moe` alias used to point at `Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed`,
 > a deliberately speed-optimised build of the same architecture, recorded at
-> **78 / 208 / 125 t/s** across the three contexts above — roughly twice the
-> current build at 32k.
+> **78 / 208 / 125 t/s** across the three contexts above.
 >
-> Those three are not a clean series, and the 512 figure should be treated as
-> suspect: **208 t/s at 8k is higher than 78 t/s at 512**, and decode does not
-> get *faster* as context grows. That reading was most likely taken before the
-> machine had warmed up. Trust the 8k and 32k figures; 78 t/s is not the old
-> build's real short-context rate, and it is not comparable with the 83 t/s
-> above.
+> **208 t/s at 8k is not credible as a decode figure, and re-measuring explains
+> why**: it is reproducible if the prompt is a single sentence repeated hundreds
+> of times. On the current MoE build, an identical setup gives **117 t/s** at 10k
+> with a repetitive filler prompt and **74 t/s** with varied prose — same model,
+> same context, same tool. MTP commits more tokens per pass when the
+> continuation is predictable, so a filler prompt inflates long-context decode by
+> more than 50%. The 208 reading is almost certainly that artefact, not the
+> machine warming up, which is what an earlier version of this note guessed.
+>
+> The 8k and 32k figures are the ones to trust, and only for a filler prompt.
 >
 > It is not here because it is **Qwen's own aligned model**, and this project
 > ships uncensored only. `moe` now points at a Heretic abliteration of the same
-> architecture, which is why the long-context figures are lower: an uncensored
-> fine-tune of the same shape, not the same tuning.
+> architecture, which is why long-context throughput is lower: same shape,
+> different fine-tune, not the same tuning.
 >
 > If throughput matters to you more than refusals, that build is one line away —
 > `MODEL="Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed"` — and saying so

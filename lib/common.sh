@@ -111,8 +111,8 @@ load_config() {
   [[ -f "$ENV_FILE" ]] || die "env.conf not found at $ENV_FILE"
 
   # Defaults first, so a trimmed env.conf still works.
-  # moe, not 4bit: the MoE is the measured fastest thing here (~83 tok/s vs
-  # 42-51 for the dense 27B) and is what the README documents as the default.
+  # moe, not 4bit: the MoE is the measured fastest thing here (~88 tok/s vs
+  # 29 for the dense 27B) and is what the README documents as the default.
   MODEL="moe"
   MODELS_DIR="$REPO_DIR/models"
   CONTEXT_WINDOW=131072
