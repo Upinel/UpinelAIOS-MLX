@@ -6,6 +6,21 @@ One command to install. One command to serve. Your data never leaves the LAN.</p
 
 ---
 
+**Just want it running?** On an Apple Silicon Mac with 32 GB or more:
+
+```bash
+git clone https://github.com/upinel/UpinelAIOS-MLX && cd UpinelAIOS-MLX
+./install.sh      # scans your Mac, suggests settings, installs everything
+./start.sh        # serves http://<your-lan-ip>:8000/v1
+./chat.sh         # talk to it, right here in the terminal
+```
+
+That is the whole quick start. Everything below is detail you can come back to —
+[Requirements](#requirements) if your Mac is small, [Configure it](#configure-it)
+to change model or context, [Benchmarks](#benchmarks) for the measured numbers.
+
+---
+
 > **Sister project: [UpinelAIOS-GGUF](https://github.com/Upinel/UpinelAIOS-GGUF)** —
 > the same one-click agent server built on **llama.cpp** rather than MLX.
 > That one serves both **Gemma 4** and **Qwen 3.8** from GGUF, and is the only
@@ -42,7 +57,36 @@ as it found it.
 
 ---
 
+## Contents
+
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+  - [Chatting from the terminal](#chatting-from-the-terminal)
+- [Configure it](#configure-it)
+  - [The one file you edit](#the-one-file-you-edit)
+    - [Models — uncensored only](#models-uncensored-only)
+  - [Changing settings](#changing-settings)
+- [Going deeper](#going-deeper)
+  - [Why these choices](#why-these-choices)
+    - [1. MLX, not GGUF — because llama.cpp's MTP loses on Metal](#1-mlx-not-gguf-because-llamacpps-mtp-loses-on-metal)
+    - [2. MTP depth 2 — a 3.4× win, and the optimum is not the maximum](#2-mtp-depth-2-a-34-win-and-the-optimum-is-not-the-maximum)
+    - [3. 128K context, and it could be 262K](#3-128k-context-and-it-could-be-262k)
+    - [What long context actually costs you](#what-long-context-actually-costs-you)
+  - [Portability notes](#portability-notes)
+- [Benchmarks](#benchmarks)
+  - [Estimated throughput](#estimated-throughput)
+    - [Can it reach 75 t/s?](#can-it-reach-75-ts)
+  - [Making it faster](#making-it-faster)
+  - [Benchmarking](#benchmarking)
+- [Running it day to day](#running-it-day-to-day)
+  - [Watching it work](#watching-it-work)
+    - [Keyboard control](#keyboard-control)
+    - [Two limits, stated rather than hidden](#two-limits-stated-rather-than-hidden)
+- [Repo layout](#repo-layout)
+- [Credits and licences](#credits-and-licences)
+
 ## Requirements
+
 |   |   |
 |---|---|
 | **Minimum** | Apple Silicon Mac, **32 GB** unified memory, macOS 14+, ~25 GB free disk |
@@ -61,83 +105,6 @@ and measured on.
 
 Disk: roughly 25 GB per model. The dense 4-bit build is 15 GB, the 6-bit 23 GB,
 the MoE 21 GB. `install.sh` downloads only the model you have selected.
-
-## Estimated throughput
-
-**Measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), 4-bit
-27B, MTP depth 2:
-
-| context | decode | note |
-|---:|---:|---|
-| ~400 tokens | **42–51 t/s** | short turns, cool machine, tuned |
-| ~1,000 tokens | **21–24 t/s** | typical single agent request |
-| ~2,500 tokens | **37 t/s** | |
-| ~10,000 tokens | **17 t/s** | long agent turn, long output |
-| autoregressive, no MTP | 15 t/s | what you get if MTP is off |
-
-Throughput is dominated by **context length**, not by tuning. The same machine
-gives 51 t/s on a short prompt and 17 t/s on a long one.
-
-**Estimated** for other Macs, scaled by memory bandwidth and cross-checked
-against published MTPLX figures. Treat these as order-of-magnitude:
-
-| Mac | short-context decode | at ~10k context |
-|---|---:|---:|
-| M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
-| M3 / M4 base | 25–35 t/s | 10–15 t/s |
-| M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
-| **M5 Pro**, dense 27B (measured) | **42–51 t/s** | **17 t/s** |
-| **M5 Pro**, MoE 35B-A3B (measured) | **78 t/s** | **125 t/s** |
-| M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
-| M3 Ultra | 60–75 t/s | 22–28 t/s |
-
-The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
-suggests — roughly 51 → 59 t/s on published figures. Beyond a point this model
-stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×.
-
-### Can it reach 75 t/s?
-
-**Not with this model.** The ceiling is arithmetic, not tuning:
-
-- The 27B is dense, so every token reads all ~15 GB of 4-bit weights.
-- Measured autoregressive rate is 15 t/s, which implies ~228 GB/s of effective
-  bandwidth — already close to what an M5 Pro can sustain.
-- MTP is what beats that limit: it verifies several drafted tokens per weight
-  read. At depth 2 with ~98% acceptance that is ~3 tokens per pass, giving
-  ~45–51 t/s. That is where the measurement lands.
-- 75 t/s would need ~5 tokens per pass. Draft acceptance decays sharply with
-  depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not viable.
-
-**But 75+ t/s is reachable — with a different model.** A mixture-of-experts
-checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
-but **3B active**, so each token reads roughly a tenth as many weights:
-
-```conf
-MODEL="moe"      # Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed, 21 GB
-```
-
-Measured here, on the same M5 Pro, with MTP depth 1:
-
-| context | dense 27B (default) | MoE 35B-A3B | gain |
-|---:|---:|---:|---:|
-| 512 | 42–51 t/s | **78 t/s** | ~1.7× |
-| 8,192 | ~38 t/s | **208 t/s** | ~5.5× |
-| 32,768 | ~22 t/s | **125 t/s** | ~5.7× |
-
-Prefill improves as well — 1,837 t/s against 444 t/s — so long prompts arrive
-roughly four times sooner.
-
-**The trade is not free.** `Qwen3.6-35B-A3B` is Qwen's own aligned model, not an
-uncensored fine-tune, and it is a different base generation. The dense 4-bit
-default remains the pick for uncensored output and for the specific HauhauCS
-fine-tune; the MoE is the pick when throughput is what you care about. Both are
-installed with `./install.sh` and switched with one line in `env.conf`.
-
-MTP depth 1 is optimal for the MoE and depth 2 for the dense model — tuning
-results are stored per model in `run/tuning-<model>.json`, so switching models
-does not silently reuse the wrong depth.
-
----
 
 ## Quick start
 
@@ -218,272 +185,16 @@ the OpenAI Python SDK.
 
 ---
 
-## Watching it work
-
-`./status.sh` is a live dashboard, refreshed once a second:
-
-```
-  UpinelAIOS-MLX                                        ● serving  up 02:14:33
-  ──────────────────────────────────────────────────────────────────────────────
-  itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
-  sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
-
-  HOST                                ENDPOINT PROCESS
-  CPU   █████░░░░░░░░░░░   32.6%      weights        14.9G ███████░░░
-  GPU   ████████████████    100%      session bank   2.55G █░░░░░░░░░
-  ANE   ░░░░░░░░░░░░░░░░   n/a        generation     3.82G ██░░░░░░░░
-  RAM   ███████████░░░░░   44.9G      kv cache       5.76G ███░░░░░░░
-  SWAP  ██████████████░░   11.4G      ───────────────────────────────
-  cpu 17u/15s  nominal  pressure L1   total          21.3G  peak 28.9G
-                                      host free      5.33G  (+13.8G cached)
-
-  CONCURRENT ACTIVITY                                  CLIENTS  connected peers
-  in-flight 1   sessions 1   lane solo_mtp             10.0.1.69   1 conn  python3.1
-  chatcmpl-2b476…   219s anon-1125623 23865 ctx  1867 tok @ 16.7 t/s
-    “please just write something, it seems like you are n…”
-
-  TOKEN RATE  live, last 126 samples  min 14.5 avg 16.1 max 22.9   TOKENS GENERATED
-    17.0                                      ▄▃▃▃▃▃▂▂▁▁▁▁▁  ▁   output        16,105
-                                        ▁▃▆█▅▆▅▆▇████████████  input        384,355
-        ▅ ▂▃▂▁              ▁▁   ▇▇▇▅▄▄▃▅▅▆▅▅▆▇▇█████████████  total        400,460
-        ████████▇▇▂▄▅▅▅▁▃▄▄▄▃▃▅▆▇▇██▇▆▇▆▆▆████▇▇▇▅▆████████████  requests          38
-    15.3 now 16.7 t/s                                            since restart      0
-```
-
-| Panel | What it shows | Source |
-|---|---|---|
-| HOST | CPU (with user/sys split), GPU, ANE, RAM, swap, thermal, memory pressure | `host_statistics`, IOKit, `vm_stat` |
-| ENDPOINT PROCESS | the inference process's own MLX allocation: weights, session bank, generation working set, KV cache, total and peak | MTPLX telemetry `mem` |
-| CONCURRENT ACTIVITY | in-flight requests with live per-request token counts and decode rate, session count, scheduler lane | MTPLX `in_flight`, `scheduler` |
-| CLIENTS | TCP peers currently connected, with process names | `lsof` |
-| TOKEN RATE | live decode rate, charted, with min/avg/max over the window | MTPLX `rolling.live_history` |
-| TOKENS GENERATED | output, input, total and request counts | incremental scan of `run/server.log` |
-
-The full API key and the model identity are printed in the header, untruncated,
-because both are things you copy into a client.
-
-### Keyboard control
-
-While the dashboard is running:
-
-| key | action |
-|---|---|
-| `t` | cycle the thinking level |
-| `m` | cycle the downloaded models |
-| `Enter` | apply the pending change now |
-| `Esc` | cancel the pending change |
-| `q` | quit |
-
-A toggle does **not** apply on the keystroke that chose it. It arms a
-**2-second countdown** and applies when the countdown expires, so pressing the
-key again moves to the next option without committing to the one you just
-passed. The footer shows exactly what is about to happen:
-
-```
-── thinking: low → medium   applying in 1.9s   [same key] next  [Enter] now  [Esc] cancel
-```
-
-Thinking changes are applied live — the model stays loaded, so it is instant and
-safe mid-generation. Model switches persist to `env.conf` and restart the
-server, which takes 30–90s to load the new weights; the dashboard survives the
-restart and shows `not running` until it is back.
-
-`--no-keys` turns the toggles off for a passive display, and the bindings are
-silently disabled when stdout is not a terminal.
-
-`--once` prints a plain summary for logs and scripts, `--json` a
-machine-readable snapshot, `--key` prints only the API key (handy for
-`export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
-
-The window heading is pinned to **UpinelAIOS-MLX Status** for as long as the
-dashboard runs, and released when you exit. This needs saying because it is not
-automatic: Terminal.app titles the window from whichever process is in front of
-the tty, and a dashboard that shells out to `lsof`, `ioreg` and `pmset` once a
-second would otherwise make the heading flicker between those names and
-`python3`. The probes are launched with `setsid` so they have no controlling
-terminal at all, and the title is re-asserted on every frame.
-
-The layout adapts to your window. Panels are admitted in priority order —
-identity, then host and process memory, then the token rate, then concurrent
-activity — and anything that will not fit is dropped rather than drawn past the
-bottom of the screen. If the activity panel is dropped, its essentials (who is
-connected, how much is running) move into the footer line, so nothing important
-disappears silently. On a 24-row terminal you get the header, the host and
-process panels, and the token chart; on an 80-row terminal you get everything.
-
-### Two limits, stated rather than hidden
-
-**Client IPs come from the socket table, not the request.** MTPLX does not
-record which request came from which peer, so `CLIENTS` answers "who is
-connected to this port right now", not "who sent this particular prompt". It is
-still the right tool for "is anything else on my LAN using my Mac?" — which is
-usually the actual question. Each row names the *peer* process, not the server's
-own, so a local agent shows as `this Mac  DSH De` rather than the runtime's
-process name.
-
-**The ANE is shown as `n/a`.** Apple exposes the Neural Engine only through
-`powermetrics`, which needs root — and MLX is GPU-only, so it genuinely is idle
-for this workload. `--power` reads the real figures when you have passwordless
-sudo. The GPU number needs no such compromise: IOKit publishes the GPU's own
-busy counter unprivileged. Note that counter is **system-wide**, so WindowServer
-and browser compositing are included; it answers "is the machine busy", not
-"how much is the model using".
-
 ---
 
-## Changing settings
+## Configure it
 
-`env.conf` settings are passed to the runtime as command-line arguments at
-launch, so **editing the file has no effect until you restart**. That is what
-`restart.sh` is for:
-
-```bash
-$ ./restart.sh
-UpinelAIOS-MLX restart
-
-  env.conf changed since the server last started:
-    CONTEXT_WINDOW         131072  ->  204800
-    KV_QUANT               q8  ->  off
-    THINKING               low  ->  high
-
-  left of the arrow is what is running now; right is what will start.
-
-  Starting with:
-    model      itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
-    served as  Upinel-AIOS-MLX
-    context    204800   KV off   MTP depth 2
-    profile    sustained   thinking high   history scoped
-
-==> Stopping pid 78517 (SIGTERM)...
- ok Port 8000 is free.
-==> Waiting for the port and GPU memory to settle...
-==> Loading the model - first token takes ~30-90s.
- ok Server is up.
-```
-
-It diffs the *effective* settings, not the file, so editing a comment or
-reordering lines does not show up as a change. `--print` shows what would
-happen without doing it.
-
-The stop is graceful and the script waits for the port to free plus a few
-seconds before starting, because macOS needs a moment to release the wired GPU
-allocation — starting into a port that is still closing is the usual cause of a
-failed restart. If the graceful path hangs, `--force` sends `SIGKILL`.
-
----
-
-## Why these choices
-
-Three decisions dominate everything else, and all three are backed by
-measurement on this exact hardware rather than by convention.
-
-### 1. MLX, not GGUF — because llama.cpp's MTP loses on Metal
-
-llama.cpp added `--spec-type draft-mtp` and the GGUF you may already have embeds
-the head. On Apple Silicon it does not pay off: Metal does not amortise a 3–5 row
-verify batch the way CUDA does, so the draft passes cost more than they save.
-The MLX conversion of this same fine-tune reports:
-
-> "the same fine-tune as Q6 GGUF with the FastMTP sidecar in llama.cpp reached
-> **~12.5 tok/s** on the same hardware" — against 30.9 tok/s for the MLX build.
-
-We reproduced the shape of that on this Mac: llama.cpp + `--spec-type draft-mtp`
-reached **20.7 tok/s**; the MLX stack reaches **53.4**. That is the whole
-argument. Details in [docs/TUNING.md §1](docs/TUNING.md).
-
-### 2. MTP depth 2 — a 3.4× win, and the optimum is not the maximum
-
-The model ships a trained multi-token-prediction head. MTPLX uses it with exact
-rejection sampling, so output stays distributionally identical at
-`temperature=1.0` — it is real speculative decoding, not a greedy shortcut.
-
-| Mode | tok/s | vs AR | acceptance |
-|---|---:|---:|---|
-| AR (MTP off) | 15.20 | 1.00× | — |
-| Depth 1 | 42.98 | 2.83× | 98.2% |
-| **Depth 2** | **51.34** | **3.38×** | 100%, 97.4% |
-| Depth 3 | 39.94 | 2.63× | 98.4%, 90.6%, 81.0% |
-
-> **On run-to-run variance:** three back-to-back identical short-context runs on
-> this machine gave 34.3, 41.4, and 30.8 tok/s. The 51.3 above is the tuning
-> harness's measurement on a quiet machine, and it is reproducible *there*, but
-> a warm Mac with a browser open will sit lower. Every figure in this README is
-> a measurement, not a spec sheet — re-run `./bench/bench.sh` for yours.
-
-Depth 3 is *slower* than depth 2 — each extra draft token adds a full verify
-pass while acceptance decays. This is why `install.sh` measures rather than
-hardcoding: on your Mac the winner may be 1, 2, or 3.
-
-### 3. 128K context, and it could be 262K
-
-This is not a normal 27B. Only **16 of its 64 layers** keep a growing KV cache;
-the other 48 are linear-attention (Gated DeltaNet) and carry a **fixed** ~150 MiB
-state no matter how long the conversation gets.
-
-So one token costs `16 layers × 2 (K,V) × 4 heads × 256 dim = 32,768 elements`:
-
-| Context | f16 KV | q8 KV | q4 KV |
-|---:|---:|---:|---:|
-| 32,768 | 2.0 GB | 1.1 GB | 0.6 GB |
-| 131,072 | 8.0 GB | 4.3 GB | 2.3 GB |
-| 204,800 | 12.5 GB | 6.7 GB | 3.5 GB |
-| 262,144 | 16.0 GB | 8.5 GB | 4.5 GB |
-
-On 64 GB with 15 GB of weights, **262,144 context with q8 KV is ~24 GB total**.
-The default is a conservative 131,072; 200K+ is a one-line change. And because
-MTPLX sizes paged KV per request, a high `CONTEXT_WINDOW` costs nothing until
-you actually use it.
-
-### What long context actually costs you
-
-Capacity and speed are different things. Measured here:
-
-| prompt tokens | prefill | decode |
-|---:|---:|---:|
-| ~400 | 254 t/s | **52.3 t/s** |
-| 8,000 | 402 t/s | **38.6 t/s** |
-| 32,000 | 437 t/s | **22.5 t/s** |
-| 93,000 | 217 t/s | **14.3 t/s** |
-
-Decode falls off as context grows — each verify pass attends over everything —
-and by 90k the MTP speedup has largely evaporated (the autoregressive baseline
-is 15.2 t/s). Prefill is the other half: a **cold** 128k prompt takes minutes.
-
-The practical consequence for agents is that **prompt caching matters more than
-any decode tweak**. A conversation that grows turn by turn reuses its cached
-prefix and is cheap. An agent that rebuilds its context every request pays full
-prefill cost every time. `SSD_SESSION_CACHE="on"` and a stable prefix are worth
-more than everything else in this file combined.
-
-The session bank is not theory. Back-to-back requests during final verification
-where the second prompt extended the first:
-
-| request | prefill rate | TTFT |
-|---|---:|---:|
-| 547 tokens, cold | 138 t/s | 3.95 s |
-| 8,035 tokens, sharing a prefix with it | **5,857 t/s** | **1.37 s** |
-| 32,137 tokens, no shared prefix | 444 t/s | 72.4 s |
-
-Same server, same context window: the shared-prefix request was ~40× faster to
-first token than a cold prefill of comparable size. That is the difference
-between an agent that is usable and one that is not.
-
-> **One hard limit, measured:** a single ~131k-token prefill on this 64 GB Mac
-> (with a normal desktop session running) fails with a Metal command-buffer
-> allocation error, `kIOGPUCommandBufferCallbackErrorOutOfMemory`. This is a
-> Metal allocator ceiling, not a RAM shortage — freeing memory will not fix it.
-> Prompts up to ~93k prefill fine, and incremental context growth works.
-> `PREFILL_CHUNK_TOKENS=2048` is the first thing to try; see
-> [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
-
----
-
-## The one file you edit
+### The one file you edit
 
 `env.conf` is fully commented, and `./install.sh` offers to set it for your
 machine.
 
-### Models — uncensored only
+#### Models — uncensored only
 
 **Every model UpinelAIOS-MLX ships or suggests is an uncensored fine-tune.** That is
 a product rule, not a coincidence: this endpoint exists so you can run a model
@@ -611,7 +322,254 @@ after a two-minute load.
 
 ---
 
-## Making it faster
+### Changing settings
+
+`env.conf` settings are passed to the runtime as command-line arguments at
+launch, so **editing the file has no effect until you restart**. That is what
+`restart.sh` is for:
+
+```bash
+$ ./restart.sh
+UpinelAIOS-MLX restart
+
+  env.conf changed since the server last started:
+    CONTEXT_WINDOW         131072  ->  204800
+    KV_QUANT               q8  ->  off
+    THINKING               low  ->  high
+
+  left of the arrow is what is running now; right is what will start.
+
+  Starting with:
+    model      itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+    served as  Upinel-AIOS-MLX
+    context    204800   KV off   MTP depth 2
+    profile    sustained   thinking high   history scoped
+
+==> Stopping pid 78517 (SIGTERM)...
+ ok Port 8000 is free.
+==> Waiting for the port and GPU memory to settle...
+==> Loading the model - first token takes ~30-90s.
+ ok Server is up.
+```
+
+It diffs the *effective* settings, not the file, so editing a comment or
+reordering lines does not show up as a change. `--print` shows what would
+happen without doing it.
+
+The stop is graceful and the script waits for the port to free plus a few
+seconds before starting, because macOS needs a moment to release the wired GPU
+allocation — starting into a port that is still closing is the usual cause of a
+failed restart. If the graceful path hangs, `--force` sends `SIGKILL`.
+
+---
+
+---
+
+## Going deeper
+
+### Why these choices
+
+Three decisions dominate everything else, and all three are backed by
+measurement on this exact hardware rather than by convention.
+
+#### 1. MLX, not GGUF — because llama.cpp's MTP loses on Metal
+
+llama.cpp added `--spec-type draft-mtp` and the GGUF you may already have embeds
+the head. On Apple Silicon it does not pay off: Metal does not amortise a 3–5 row
+verify batch the way CUDA does, so the draft passes cost more than they save.
+The MLX conversion of this same fine-tune reports:
+
+> "the same fine-tune as Q6 GGUF with the FastMTP sidecar in llama.cpp reached
+> **~12.5 tok/s** on the same hardware" — against 30.9 tok/s for the MLX build.
+
+We reproduced the shape of that on this Mac: llama.cpp + `--spec-type draft-mtp`
+reached **20.7 tok/s**; the MLX stack reaches **53.4**. That is the whole
+argument. Details in [docs/TUNING.md §1](docs/TUNING.md).
+
+#### 2. MTP depth 2 — a 3.4× win, and the optimum is not the maximum
+
+The model ships a trained multi-token-prediction head. MTPLX uses it with exact
+rejection sampling, so output stays distributionally identical at
+`temperature=1.0` — it is real speculative decoding, not a greedy shortcut.
+
+| Mode | tok/s | vs AR | acceptance |
+|---|---:|---:|---|
+| AR (MTP off) | 15.20 | 1.00× | — |
+| Depth 1 | 42.98 | 2.83× | 98.2% |
+| **Depth 2** | **51.34** | **3.38×** | 100%, 97.4% |
+| Depth 3 | 39.94 | 2.63× | 98.4%, 90.6%, 81.0% |
+
+> **On run-to-run variance:** three back-to-back identical short-context runs on
+> this machine gave 34.3, 41.4, and 30.8 tok/s. The 51.3 above is the tuning
+> harness's measurement on a quiet machine, and it is reproducible *there*, but
+> a warm Mac with a browser open will sit lower. Every figure in this README is
+> a measurement, not a spec sheet — re-run `./bench/bench.sh` for yours.
+
+Depth 3 is *slower* than depth 2 — each extra draft token adds a full verify
+pass while acceptance decays. This is why `install.sh` measures rather than
+hardcoding: on your Mac the winner may be 1, 2, or 3.
+
+#### 3. 128K context, and it could be 262K
+
+This is not a normal 27B. Only **16 of its 64 layers** keep a growing KV cache;
+the other 48 are linear-attention (Gated DeltaNet) and carry a **fixed** ~150 MiB
+state no matter how long the conversation gets.
+
+So one token costs `16 layers × 2 (K,V) × 4 heads × 256 dim = 32,768 elements`:
+
+| Context | f16 KV | q8 KV | q4 KV |
+|---:|---:|---:|---:|
+| 32,768 | 2.0 GB | 1.1 GB | 0.6 GB |
+| 131,072 | 8.0 GB | 4.3 GB | 2.3 GB |
+| 204,800 | 12.5 GB | 6.7 GB | 3.5 GB |
+| 262,144 | 16.0 GB | 8.5 GB | 4.5 GB |
+
+On 64 GB with 15 GB of weights, **262,144 context with q8 KV is ~24 GB total**.
+The default is a conservative 131,072; 200K+ is a one-line change. And because
+MTPLX sizes paged KV per request, a high `CONTEXT_WINDOW` costs nothing until
+you actually use it.
+
+#### What long context actually costs you
+
+Capacity and speed are different things. Measured here:
+
+| prompt tokens | prefill | decode |
+|---:|---:|---:|
+| ~400 | 254 t/s | **52.3 t/s** |
+| 8,000 | 402 t/s | **38.6 t/s** |
+| 32,000 | 437 t/s | **22.5 t/s** |
+| 93,000 | 217 t/s | **14.3 t/s** |
+
+Decode falls off as context grows — each verify pass attends over everything —
+and by 90k the MTP speedup has largely evaporated (the autoregressive baseline
+is 15.2 t/s). Prefill is the other half: a **cold** 128k prompt takes minutes.
+
+The practical consequence for agents is that **prompt caching matters more than
+any decode tweak**. A conversation that grows turn by turn reuses its cached
+prefix and is cheap. An agent that rebuilds its context every request pays full
+prefill cost every time. `SSD_SESSION_CACHE="on"` and a stable prefix are worth
+more than everything else in this file combined.
+
+The session bank is not theory. Back-to-back requests during final verification
+where the second prompt extended the first:
+
+| request | prefill rate | TTFT |
+|---|---:|---:|
+| 547 tokens, cold | 138 t/s | 3.95 s |
+| 8,035 tokens, sharing a prefix with it | **5,857 t/s** | **1.37 s** |
+| 32,137 tokens, no shared prefix | 444 t/s | 72.4 s |
+
+Same server, same context window: the shared-prefix request was ~40× faster to
+first token than a cold prefill of comparable size. That is the difference
+between an agent that is usable and one that is not.
+
+> **One hard limit, measured:** a single ~131k-token prefill on this 64 GB Mac
+> (with a normal desktop session running) fails with a Metal command-buffer
+> allocation error, `kIOGPUCommandBufferCallbackErrorOutOfMemory`. This is a
+> Metal allocator ceiling, not a RAM shortage — freeing memory will not fix it.
+> Prompts up to ~93k prefill fine, and incremental context growth works.
+> `PREFILL_CHUNK_TOKENS=2048` is the first thing to try; see
+> [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+---
+
+### Portability notes
+
+- **Apple Silicon only.** MTPLX is MLX-native; there is no x86 path.
+- **32 GB Macs:** set `MEMORY_LIMIT_GB=24` and lower `CONTEXT_WINDOW` to 65536.
+  `install.sh` warns when your plan does not fit.
+- **96 / 128 GB Macs:** raise `MEMORY_LIMIT_GB` and `CONTEXT_WINDOW`; consider
+  `MODEL="6bit"` for better fidelity, which still fits comfortably.
+- **`WIRED_LIMIT_GB`** defaults to `0`, leaving macOS to manage the GPU wired
+  ceiling (~75% of RAM). Do not raise it near physical RAM: it makes jetsam kills
+  more likely, and a hard-killed process can leak wired pages until reboot.
+- **Always stop with `./stop.sh`.** It sends `SIGTERM` and waits; the
+  `--force` path sends `SIGKILL` and is a last resort, for exactly that reason.
+
+---
+
+---
+
+## Benchmarks
+
+### Estimated throughput
+
+**Measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), 4-bit
+27B, MTP depth 2:
+
+| context | decode | note |
+|---:|---:|---|
+| ~400 tokens | **42–51 t/s** | short turns, cool machine, tuned |
+| ~1,000 tokens | **21–24 t/s** | typical single agent request |
+| ~2,500 tokens | **37 t/s** | |
+| ~10,000 tokens | **17 t/s** | long agent turn, long output |
+| autoregressive, no MTP | 15 t/s | what you get if MTP is off |
+
+Throughput is dominated by **context length**, not by tuning. The same machine
+gives 51 t/s on a short prompt and 17 t/s on a long one.
+
+**Estimated** for other Macs, scaled by memory bandwidth and cross-checked
+against published MTPLX figures. Treat these as order-of-magnitude:
+
+| Mac | short-context decode | at ~10k context |
+|---|---:|---:|
+| M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
+| M3 / M4 base | 25–35 t/s | 10–15 t/s |
+| M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
+| **M5 Pro**, dense 27B (measured) | **42–51 t/s** | **17 t/s** |
+| **M5 Pro**, MoE 35B-A3B (measured) | **78 t/s** | **125 t/s** |
+| M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
+| M3 Ultra | 60–75 t/s | 22–28 t/s |
+
+The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
+suggests — roughly 51 → 59 t/s on published figures. Beyond a point this model
+stops being purely memory-bandwidth-bound, so a 2× wider chip does not give 2×.
+
+#### Can it reach 75 t/s?
+
+**Not with this model.** The ceiling is arithmetic, not tuning:
+
+- The 27B is dense, so every token reads all ~15 GB of 4-bit weights.
+- Measured autoregressive rate is 15 t/s, which implies ~228 GB/s of effective
+  bandwidth — already close to what an M5 Pro can sustain.
+- MTP is what beats that limit: it verifies several drafted tokens per weight
+  read. At depth 2 with ~98% acceptance that is ~3 tokens per pass, giving
+  ~45–51 t/s. That is where the measurement lands.
+- 75 t/s would need ~5 tokens per pass. Draft acceptance decays sharply with
+  depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not viable.
+
+**But 75+ t/s is reachable — with a different model.** A mixture-of-experts
+checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
+but **3B active**, so each token reads roughly a tenth as many weights:
+
+```conf
+MODEL="moe"      # Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed, 21 GB
+```
+
+Measured here, on the same M5 Pro, with MTP depth 1:
+
+| context | dense 27B (default) | MoE 35B-A3B | gain |
+|---:|---:|---:|---:|
+| 512 | 42–51 t/s | **78 t/s** | ~1.7× |
+| 8,192 | ~38 t/s | **208 t/s** | ~5.5× |
+| 32,768 | ~22 t/s | **125 t/s** | ~5.7× |
+
+Prefill improves as well — 1,837 t/s against 444 t/s — so long prompts arrive
+roughly four times sooner.
+
+**The trade is not free.** `Qwen3.6-35B-A3B` is Qwen's own aligned model, not an
+uncensored fine-tune, and it is a different base generation. The dense 4-bit
+default remains the pick for uncensored output and for the specific HauhauCS
+fine-tune; the MoE is the pick when throughput is what you care about. Both are
+installed with `./install.sh` and switched with one line in `env.conf`.
+
+MTP depth 1 is optimal for the MoE and depth 2 for the dense model — tuning
+results are stored per model in `run/tuning-<model>.json`, so switching models
+does not silently reuse the wrong depth.
+
+---
+
+### Making it faster
 
 Ordered by what actually moves the numbers, based on measurement rather than
 convention:
@@ -643,7 +601,7 @@ Be sceptical of tuning folklore beyond this list. `KV_QUANT`, batching presets
 and stream intervals are real, but each is worth single-digit percent, while
 context length and model choice are worth multiples.
 
-## Benchmarking
+### Benchmarking
 
 ```bash
 ./bench/bench.sh --quick      # ~30 s sanity check
@@ -657,18 +615,120 @@ under 32 generated tokens are flagged as noise.
 
 ---
 
-## Portability notes
+---
 
-- **Apple Silicon only.** MTPLX is MLX-native; there is no x86 path.
-- **32 GB Macs:** set `MEMORY_LIMIT_GB=24` and lower `CONTEXT_WINDOW` to 65536.
-  `install.sh` warns when your plan does not fit.
-- **96 / 128 GB Macs:** raise `MEMORY_LIMIT_GB` and `CONTEXT_WINDOW`; consider
-  `MODEL="6bit"` for better fidelity, which still fits comfortably.
-- **`WIRED_LIMIT_GB`** defaults to `0`, leaving macOS to manage the GPU wired
-  ceiling (~75% of RAM). Do not raise it near physical RAM: it makes jetsam kills
-  more likely, and a hard-killed process can leak wired pages until reboot.
-- **Always stop with `./stop.sh`.** It sends `SIGTERM` and waits; the
-  `--force` path sends `SIGKILL` and is a last resort, for exactly that reason.
+## Running it day to day
+
+### Watching it work
+
+`./status.sh` is a live dashboard, refreshed once a second:
+
+```
+  UpinelAIOS-MLX                                        ● serving  up 02:14:33
+  ──────────────────────────────────────────────────────────────────────────────
+  itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit
+  sustained · MTP d2 · think low · hist scoped · KV q8 · ctx 131072
+
+  HOST                                ENDPOINT PROCESS
+  CPU   █████░░░░░░░░░░░   32.6%      weights        14.9G ███████░░░
+  GPU   ████████████████    100%      session bank   2.55G █░░░░░░░░░
+  ANE   ░░░░░░░░░░░░░░░░   n/a        generation     3.82G ██░░░░░░░░
+  RAM   ███████████░░░░░   44.9G      kv cache       5.76G ███░░░░░░░
+  SWAP  ██████████████░░   11.4G      ───────────────────────────────
+  cpu 17u/15s  nominal  pressure L1   total          21.3G  peak 28.9G
+                                      host free      5.33G  (+13.8G cached)
+
+  CONCURRENT ACTIVITY                                  CLIENTS  connected peers
+  in-flight 1   sessions 1   lane solo_mtp             10.0.1.69   1 conn  python3.1
+  chatcmpl-2b476…   219s anon-1125623 23865 ctx  1867 tok @ 16.7 t/s
+    “please just write something, it seems like you are n…”
+
+  TOKEN RATE  live, last 126 samples  min 14.5 avg 16.1 max 22.9   TOKENS GENERATED
+    17.0                                      ▄▃▃▃▃▃▂▂▁▁▁▁▁  ▁   output        16,105
+                                        ▁▃▆█▅▆▅▆▇████████████  input        384,355
+        ▅ ▂▃▂▁              ▁▁   ▇▇▇▅▄▄▃▅▅▆▅▅▆▇▇█████████████  total        400,460
+        ████████▇▇▂▄▅▅▅▁▃▄▄▄▃▃▅▆▇▇██▇▆▇▆▆▆████▇▇▇▅▆████████████  requests          38
+    15.3 now 16.7 t/s                                            since restart      0
+```
+
+| Panel | What it shows | Source |
+|---|---|---|
+| HOST | CPU (with user/sys split), GPU, ANE, RAM, swap, thermal, memory pressure | `host_statistics`, IOKit, `vm_stat` |
+| ENDPOINT PROCESS | the inference process's own MLX allocation: weights, session bank, generation working set, KV cache, total and peak | MTPLX telemetry `mem` |
+| CONCURRENT ACTIVITY | in-flight requests with live per-request token counts and decode rate, session count, scheduler lane | MTPLX `in_flight`, `scheduler` |
+| CLIENTS | TCP peers currently connected, with process names | `lsof` |
+| TOKEN RATE | live decode rate, charted, with min/avg/max over the window | MTPLX `rolling.live_history` |
+| TOKENS GENERATED | output, input, total and request counts | incremental scan of `run/server.log` |
+
+The full API key and the model identity are printed in the header, untruncated,
+because both are things you copy into a client.
+
+#### Keyboard control
+
+While the dashboard is running:
+
+| key | action |
+|---|---|
+| `t` | cycle the thinking level |
+| `m` | cycle the downloaded models |
+| `Enter` | apply the pending change now |
+| `Esc` | cancel the pending change |
+| `q` | quit |
+
+A toggle does **not** apply on the keystroke that chose it. It arms a
+**2-second countdown** and applies when the countdown expires, so pressing the
+key again moves to the next option without committing to the one you just
+passed. The footer shows exactly what is about to happen:
+
+```
+── thinking: low → medium   applying in 1.9s   [same key] next  [Enter] now  [Esc] cancel
+```
+
+Thinking changes are applied live — the model stays loaded, so it is instant and
+safe mid-generation. Model switches persist to `env.conf` and restart the
+server, which takes 30–90s to load the new weights; the dashboard survives the
+restart and shows `not running` until it is back.
+
+`--no-keys` turns the toggles off for a passive display, and the bindings are
+silently disabled when stdout is not a terminal.
+
+`--once` prints a plain summary for logs and scripts, `--json` a
+machine-readable snapshot, `--key` prints only the API key (handy for
+`export KEY=$(./status.sh --key)`), and `--interval N` slows the refresh.
+
+The window heading is pinned to **UpinelAIOS-MLX Status** for as long as the
+dashboard runs, and released when you exit. This needs saying because it is not
+automatic: Terminal.app titles the window from whichever process is in front of
+the tty, and a dashboard that shells out to `lsof`, `ioreg` and `pmset` once a
+second would otherwise make the heading flicker between those names and
+`python3`. The probes are launched with `setsid` so they have no controlling
+terminal at all, and the title is re-asserted on every frame.
+
+The layout adapts to your window. Panels are admitted in priority order —
+identity, then host and process memory, then the token rate, then concurrent
+activity — and anything that will not fit is dropped rather than drawn past the
+bottom of the screen. If the activity panel is dropped, its essentials (who is
+connected, how much is running) move into the footer line, so nothing important
+disappears silently. On a 24-row terminal you get the header, the host and
+process panels, and the token chart; on an 80-row terminal you get everything.
+
+#### Two limits, stated rather than hidden
+
+**Client IPs come from the socket table, not the request.** MTPLX does not
+record which request came from which peer, so `CLIENTS` answers "who is
+connected to this port right now", not "who sent this particular prompt". It is
+still the right tool for "is anything else on my LAN using my Mac?" — which is
+usually the actual question. Each row names the *peer* process, not the server's
+own, so a local agent shows as `this Mac  DSH De` rather than the runtime's
+process name.
+
+**The ANE is shown as `n/a`.** Apple exposes the Neural Engine only through
+`powermetrics`, which needs root — and MLX is GPU-only, so it genuinely is idle
+for this workload. `--power` reads the real figures when you have passwordless
+sudo. The GPU number needs no such compromise: IOKit publishes the GPU's own
+busy counter unprivileged. Note that counter is **system-wide**, so WindowServer
+and browser compositing are included; it answers "is the machine busy", not
+"how much is the model using".
 
 ---
 
