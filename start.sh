@@ -58,6 +58,17 @@ case "$SSD_SESSION_CACHE" in on|off|write-only) ;; *) die "SSD_SESSION_CACHE=\"$
 case "$PRESERVE_THINKING" in auto|on|off|scoped) ;; *) die "PRESERVE_THINKING=\"$PRESERVE_THINKING\" is not one of auto | on | off | scoped" ;; esac
 thinking_level_ok "$THINKING" || die "THINKING=\"$THINKING\" is not one of off | minimal | low | medium | high"
 
+# ── which downloaded model to serve ──────────────────────────────────────────
+# Offered only when there is a real choice: more than one model on disk, a
+# terminal to answer on, and no --model. Anything else keeps env.conf's MODEL,
+# so a start in a pipe, in CI or under launchd is never held up by a prompt.
+if [[ -z "$MODEL_OVERRIDE" ]] && (( ! PRINT_ONLY )); then
+  if choose_model_on_disk; then
+    export MODEL_REPO MODEL_DIR
+    info "Serving $MODEL_REPO for this run. Set MODEL in env.conf to make it permanent."
+  fi
+fi
+
 # A depth of 0 or an explicit --no-mtp means plain autoregressive decoding.
 # On Apple Silicon that is roughly a 3x slowdown, so warn loudly.
 if [[ "$EFFECTIVE_DEPTH" == "0" ]]; then

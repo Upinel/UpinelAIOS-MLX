@@ -385,6 +385,142 @@ model_download_gb() {
   esac
 }
 
+# ── which models are actually downloaded ─────────────────────────────────────
+# Size of one model directory in GB, from the safetensors it holds. Returns
+# non-zero for a directory whose weights come to less than a gigabyte, which in
+# practice means the download did not finish.
+model_dir_gb() {
+  local bytes
+  bytes="$(find "$1" -name '*.safetensors' -type f \
+            -exec stat -f%z {} + 2>/dev/null | awk '{n+=$1} END {print n+0}')"
+  (( bytes > 1000000000 )) || return 1
+  echo $(( bytes / 1000000000 ))
+}
+
+# Is this directory a model that will actually load?
+#
+# Not "does it contain a safetensors file": a download in progress leaves a
+# directory with the first shards in it, and offering that in the picker would
+# produce exactly the failure the picker exists to prevent - a server that dies
+# on startup. MLX packs ship model.safetensors.index.json naming every shard, so
+# when that index is there, all of it has to be there.
+model_dir_ok() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 1
+  find "$dir" -maxdepth 1 -name '*.safetensors' -type f 2>/dev/null \
+    | grep -q . || return 1
+  [[ -f "$dir/model.safetensors.index.json" ]] || return 0
+  python3 - "$dir" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+try:
+    weight_map = json.load(open(os.path.join(d, "model.safetensors.index.json")))
+except Exception:
+    sys.exit(0)          # an unreadable index is not grounds to hide a model
+want = set((weight_map.get("weight_map") or {}).values())
+if not want:
+    sys.exit(0)
+sys.exit(0 if all(os.path.exists(os.path.join(d, f)) for f in want) else 1)
+PY
+}
+
+# One line per model directory holding a complete set of weights.
+model_dirs_on_disk() {
+  local dir
+  for dir in "$MODELS_DIR"/*/; do
+    [[ -d "$dir" ]] || continue
+    dir="${dir%/}"
+    model_dir_ok "$dir" || continue
+    printf '%s\n' "$dir"
+  done
+  return 0
+}
+
+# "owner--name" back to "owner/name". Only the FIRST separator is restored,
+# which is correct: exactly one was inserted when the directory was named.
+model_repo_from_dir() {
+  local base; base="$(basename "$1")"
+  printf '%s\n' "${base/--//}"
+}
+
+# Reverse-map a repo id back to its alias. Empty when it is not a known alias.
+alias_for_repo() {
+  local a
+  for a in $MODEL_ALIASES; do
+    [[ "$(model_repo_for "$a" 2>/dev/null)" == "$1" ]] && { printf '%s\n' "$a"; return 0; }
+  done
+  printf '\n'
+}
+
+# How long the on-disk picker waits before taking the default. Whole seconds
+# only: bash 3.2 - which is what ships on macOS - rejects `read -t 0.5` with
+# "invalid timeout specification".
+MODEL_PICK_SECONDS=5
+
+# Offer the models already downloaded, when there is a real choice to make.
+#
+# Sets MODEL_REPO and MODEL_DIR when something is chosen and returns 0; returns
+# 1 to mean "keep what env.conf says", which covers every case where asking
+# would be wrong: one model on disk, no terminal to ask on, an unreadable
+# answer, or no answer within MODEL_PICK_SECONDS.
+#
+# Never prompts without a terminal. A server start must not hang behind a
+# question in a pipe, in CI, or under launchd.
+choose_model_on_disk() {
+  local dirs=() d
+  while IFS= read -r d; do
+    [[ -n "$d" ]] && dirs+=("$d")
+  done < <(model_dirs_on_disk)
+
+  (( ${#dirs[@]} > 1 )) || return 1
+  [[ -t 0 ]] || return 1
+
+  local default_dir="$MODELS_DIR/${MODEL_REPO//\//--}"
+  local default_idx=1 i=1 repo alias name gb mark
+  for d in "${dirs[@]}"; do
+    [[ "$d" == "$default_dir" ]] && default_idx=$i
+    i=$(( i + 1 ))
+  done
+
+  log ""
+  log "  ${C_BOLD}Models on disk${C_RESET}   ${C_DIM}${#dirs[@]} downloaded - pick one to serve now${C_RESET}"
+  log ""
+  i=1
+  for d in "${dirs[@]}"; do
+    repo="$(model_repo_from_dir "$d")"
+    alias="$(alias_for_repo "$repo")"
+    name="${alias:-${repo##*/}}"
+    gb="$(model_dir_gb "$d" 2>/dev/null || echo 0)"
+    mark=""
+    (( i == default_idx )) && mark="${C_DIM}<- default${C_RESET}"
+    printf '  %2d  %-12s %3s GB  %s\n' "$i" "$name" "$gb" "$mark"
+    i=$(( i + 1 ))
+  done
+  log ""
+  printf '  Number [1-%d], or Enter for the default. Auto-selects in %ds: ' \
+         "${#dirs[@]}" "$MODEL_PICK_SECONDS"
+
+  local ans=""
+  if ! read -r -t "$MODEL_PICK_SECONDS" ans; then
+    log ""
+    info "No answer in ${MODEL_PICK_SECONDS}s - using $(basename "$default_dir")."
+    return 1
+  fi
+
+  ans="${ans//[!0-9]/}"
+  if [[ -z "$ans" ]]; then
+    return 1                      # Enter: keep the default
+  fi
+  if (( ans < 1 || ans > ${#dirs[@]} )); then
+    warn "No model number $ans - using the default."
+    return 1
+  fi
+
+  MODEL_DIR="${dirs[$(( ans - 1 ))]}"
+  MODEL_REPO="$(model_repo_from_dir "$MODEL_DIR")"
+  return 0
+}
+
 # Size of the trunk weights in GB (whole numbers). Prefers the real on-disk
 # size so a 6-bit build or a custom repo is accounted for correctly; falls back
 # to the published size before the model has been downloaded.

@@ -210,6 +210,29 @@ Point any OpenAI-compatible client at the URL `status.sh` prints. See
 [docs/CLIENTS.md](docs/CLIENTS.md) for Open WebUI, Claude Code, Cline, Aider, and
 the OpenAI Python SDK.
 
+**If you have more than one model downloaded, `start.sh` and `restart.sh` ask
+which one to serve.** Press a number, or Enter for the default; with no answer
+within five seconds the default from `env.conf` is used, so nothing ever waits
+on you:
+
+```
+  Models on disk   2 downloaded - pick one to serve now
+
+   1  moe           22 GB  <- default
+   2  4bit          15 GB
+
+  Number [1-2], or Enter for the default. Auto-selects in 5s:
+```
+
+It is a one-run choice and is not written back — `MODEL` in `env.conf` is still
+the default. Pass `--model 4bit` to skip the question entirely, and note that it
+is skipped automatically whenever there is no terminal to ask on (a pipe, CI,
+`nohup`, launchd) or only one model is downloaded.
+
+Only complete downloads are offered. MLX packs name every shard in
+`model.safetensors.index.json`, and a directory missing any of them is not
+listed, so the picker cannot hand you a half-downloaded model.
+
 ---
 
 ---

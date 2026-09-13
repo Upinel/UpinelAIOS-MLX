@@ -48,6 +48,18 @@ else
 fi
 
 EFFECTIVE_DEPTH="$(effective_depth)"
+
+# Ask before printing the banner, not after: otherwise the banner would name
+# one model and the restart would load another. start.sh runs the same picker,
+# so the choice is handed over as --model to stop it asking twice.
+PICKED=0
+if (( ! PRINT_ONLY )); then
+  if choose_model_on_disk; then
+    PICKED=1
+    info "Serving $MODEL_REPO for this run. Set MODEL in env.conf to make it permanent."
+  fi
+fi
+
 log ""
 log "  ${C_BOLD}Starting with:${C_RESET}"
 log "    model      $MODEL_REPO"
@@ -95,7 +107,13 @@ sleep "$SETTLE"
 # ── start ────────────────────────────────────────────────────────────────────
 # start.sh records the new config snapshot itself, so a failed start still
 # leaves an accurate "last attempted" record for the next diff.
-"$REPO_DIR/start.sh"
+# Two branches rather than an array: expanding an empty array is an unbound
+# variable error in bash 3.2 under `set -u`.
+if (( PICKED )); then
+  "$REPO_DIR/start.sh" --model "$MODEL_REPO"
+else
+  "$REPO_DIR/start.sh"
+fi
 RC=$?
 
 if (( RC != 0 )); then

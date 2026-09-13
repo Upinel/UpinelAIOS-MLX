@@ -224,15 +224,8 @@ model_fit() {
   echo "${need_gb} ${verdict}"
 }
 
-# Reverse-map a repo id back to its alias, so the picker can mark the
-# recommended one. Empty when the repo is not a known alias.
-alias_for_repo() {
-  local a
-  for a in $MODEL_ALIASES; do
-    [[ "$(model_repo_for "$a" 2>/dev/null)" == "$1" ]] && { echo "$a"; return; }
-  done
-  echo ""
-}
+# alias_for_repo() lives in lib/common.sh: the start/restart picker needs it
+# too, and it does not source this file.
 
 # Numbered picker. Everything it needs is in globals; it does not read input.
 print_model_menu() {
