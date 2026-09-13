@@ -90,6 +90,7 @@ as it found it.
   - [Making it faster](#making-it-faster)
   - [Benchmarking](#benchmarking)
 - [Running it day to day](#running-it-day-to-day)
+  - [Updating to a new version](#updating-to-a-new-version)
   - [Watching it work](#watching-it-work)
     - [Keyboard control](#keyboard-control)
     - [Two limits, stated rather than hidden](#two-limits-stated-rather-than-hidden)
@@ -128,6 +129,7 @@ git clone https://github.com/upinel/UpinelAIOS-MLX && cd UpinelAIOS-MLX
 ./status.sh           # live dashboard: CPU, GPU, memory, live decode rate
 ./restart.sh          # apply an env.conf change
 ./model_download.sh   # download another model
+./update.sh           # update to the latest version
 ./stop.sh
 ```
 
@@ -641,6 +643,47 @@ under 32 generated tokens are flagged as noise.
 ---
 
 ## Running it day to day
+
+### Updating to a new version
+
+```bash
+./update.sh            # pull, keep your env.conf, restart if you want
+./update.sh --check    # see what is available, change nothing
+```
+
+That is the short version. It exists because `env.conf` is tracked in git and
+**editing it is the expected thing to do** — it is the one file this project asks
+you to change. A plain `git pull` therefore often stops with:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+        env.conf
+```
+
+`update.sh` handles that: it stashes your `env.conf`, pulls, and reapplies your
+settings on top. If upstream changed the same lines you did, it keeps your
+version in a stash, restores `env.conf` to upstream's (a file full of conflict
+markers would break every script that sources it), and prints the two commands
+to get your settings back.
+
+It also skips the guesswork about what to do next — it lists the files that
+changed and says whether a restart is enough or `./install.sh` is needed.
+
+**By hand, if you prefer:**
+
+```bash
+git stash push -m "my settings" -- env.conf
+git pull
+git stash pop          # resolve if it conflicts
+./restart.sh           # to run the new code
+```
+
+Your models are untouched either way: `models/`, `run/` and `outputs/` are
+gitignored, so nothing you have downloaded is affected by an update.
+
+> **`./install.sh` is only needed when a requirement changed** — a new
+> dependency, or a new step. `update.sh` says so after listing the changed
+> files. A code-only update just needs `./restart.sh`.
 
 ### Watching it work
 
