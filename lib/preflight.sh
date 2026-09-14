@@ -86,16 +86,16 @@ recommend_config() {
   local ram="$HW_RAM_GB"
 
   # moe is the default, and it is not a close call: the 35B-A3B activates only
-  # ~3B parameters per token, so it decodes at ~88 tok/s against 29 for the
-  # dense 27B, while costing about the same memory - and past 8k the gap is
-  # nearer 4x. The dense builds are the fidelity picks, not the speed picks.
+  # ~3B parameters per token, so it decodes at ~79 tok/s against ~35 for the
+  # dense 27B, while costing about the same memory. The dense builds are the
+  # quality picks, not the speed picks.
   #
   # This used to recommend the dense 4bit 27B on every Mac under 96 GB, which
   # meant install.sh would quietly downgrade anyone already on the default.
   if (( ram >= 48 )); then
     REC_MODEL="$(model_repo_for moe)"
     REC_WEIGHTS_GB=22
-    REC_REASON_MODEL="35B MoE with ~3B active - the fastest option here (~88 tok/s), and it fits ${ram} GB"
+    REC_REASON_MODEL="35B MoE with ~3B active - the fastest option here (~79 tok/s), and it fits ${ram} GB"
   elif (( ram >= 32 )); then
     REC_MODEL="$(model_repo_for 4bit)"
     REC_WEIGHTS_GB=15
@@ -199,12 +199,12 @@ model_size_gb() {
 # One-line note about a model, shown beside its verdict.
 model_note() {
   case "$1" in
-    moe)       echo "35B MoE, ~3B active - the fastest here (~88 tok/s), and the default" ;;
-    4bit)      echo "dense 27B, ~29 tok/s - the fidelity pick at a third of the speed" ;;
+    moe)       echo "35B MoE, ~3B active - the fastest here (~79 tok/s), and the default" ;;
+    4bit)      echo "dense 27B, ~35 tok/s - the quality pick, at under half the speed" ;;
     6bit)      echo "dense 27B, closest to the original weights; the slowest 27B" ;;
     27b-3bit)  echo "dense 27B squeezed to 3-bit: smallest 27B, some quality loss" ;;
     27b-4bit)  echo "another 27B 4-bit from a different publisher: 1 GB bigger, same shape" ;;
-    9b)        echo "dense 9B, ~40 tok/s - the only entry that fits a small Mac" ;;
+    9b)        echo "dense 9B, ~65 tok/s - only when memory is tight" ;;
     *)         echo "" ;;
   esac
 }

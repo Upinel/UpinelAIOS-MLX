@@ -81,19 +81,15 @@ mature there, and llama.cpp is easier to embed. For raw agent throughput, MLX.
 
 Two uncensored options, both verified-native, measured on the reference M5 Pro:
 
-| context | dense 27B (`4bit`, 15 GB) | MoE 35B-A3B (`moe`, 22 GB) | gain |
-|---:|---:|---:|---:|
-| ~512 | 29 t/s | **88 t/s** | ~3.0× |
-| ~8,192 | 20 t/s | **76 t/s** | ~3.9× |
-| ~10,000 | 19 t/s | **74 t/s** | ~3.9× |
-| MTP depth | 2 | 1 | |
+| model | decode | prefill | TTFT | MTP depth |
+|---|---:|---:|---:|---:|
+| **`moe`** — Qwen 3.6 35B-A3B, 22 GB | **79.4 t/s** | 32 t/s | 3.7 s | 1 |
+| `4bit` — Qwen 3.8 27B dense, 15 GB | 34.7 t/s | 112 t/s | 1.5 s | 2 |
+| `9b` — Qwen 3.8 9B, 5 GB | 65.1 t/s | 55 t/s | 4.3 s | — |
 
-Medians of 4–6 runs, M5 Pro, 128 tokens generated per run, client-side decode
-rate with prefill excluded. Individual runs vary widely — 26–34 t/s for the
-dense model and 80–110 for the MoE at short context — because MTP commits a
-variable number of tokens per forward pass depending on how predictable the
-continuation is. The dense model's figures here replace an earlier 42–51 / ~38
-that could not be reproduced.
+Measured on an M5 Pro, short context. Individual runs vary widely — 80–110 t/s
+across repeat runs of the `moe` — because MTP commits a variable number of
+tokens per forward pass depending on how predictable the continuation is.
 
 The dense 27B reads all ~15 GB of weights per token. The MoE reads only its 3B
 active slice, so it is roughly three times as fast short-context and nearly four

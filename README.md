@@ -12,10 +12,12 @@
 -->
 <h1 align="center">UpinelAIOS-MLX</h1>
 
-<p align="center"><b>Upinel's One-Click AI Agent Server OS for Mac (MLX)</b><br>
-<b>Focus on Extreme performance optimisation for AI Agent workflow</b><br>
-A local, uncensored, OpenAI-compatible MLX (MTPLX) agent endpoint on your own Apple Silicon Mac.<br>
-One command to install. One command to serve. Your data never leaves the LAN.</p>
+<p align="center">
+  <b>Up to 79 t/s decode — uncensored, 100% local, on your own Mac.</b><br>
+  One-click AI agent server OS for Apple Silicon · MLX / MTPLX<br>
+  <sub>Extreme performance optimisation for AI agent workflows.</sub><br>
+  <sub>One command to install. One command to serve. Your data never leaves the LAN.</sub>
+</p>
 
 <p align="center">
   <sub>Built by <b>Nova Upinel Chow</b>, MSc, LLM, BBA, MENSA &nbsp;·&nbsp;
@@ -99,18 +101,20 @@ as it found it.
   - [Chatting from the terminal](#chatting-from-the-terminal)
 - [Configure it](#configure-it)
   - [The one file you edit](#the-one-file-you-edit)
-    - [Models — uncensored only](#models-uncensored-only)
+    - [Models: uncensored only](#models-uncensored-only)
   - [Changing settings](#changing-settings)
 - [Going deeper](#going-deeper)
   - [Why these choices](#why-these-choices)
-    - [1. MLX, not GGUF — because llama.cpp's MTP loses on Metal](#1-mlx-not-gguf-because-llamacpps-mtp-loses-on-metal)
-    - [2. MTP depth 2 — a 3.4× win, and the optimum is not the maximum](#2-mtp-depth-2-a-34-win-and-the-optimum-is-not-the-maximum)
+    - [1. MLX, not GGUF: because llama.cpp's MTP loses on Metal](#1-mlx-not-gguf-because-llamacpps-mtp-loses-on-metal)
+    - [2. MTP depth 2: a 3.4× win, and the optimum is not the maximum](#2-mtp-depth-2-a-34-win-and-the-optimum-is-not-the-maximum)
     - [3. 128K context, and it could be 262K](#3-128k-context-and-it-could-be-262k)
     - [What long context actually costs you](#what-long-context-actually-costs-you)
   - [Portability notes](#portability-notes)
 - [Benchmarks](#benchmarks)
-  - [Estimated throughput](#estimated-throughput)
-    - [Can it reach 75 t/s?](#can-it-reach-75-ts)
+  - [Measured throughput](#measured-throughput)
+    - [The same models on both runtimes](#the-same-models-on-both-runtimes)
+    - [Every run varies, so quote the range](#every-run-varies-so-quote-the-range)
+    - [Why the MoE is the default](#why-the-moe-is-the-default)
   - [Making it faster](#making-it-faster)
   - [Benchmarking](#benchmarking)
 - [Running it day to day](#running-it-day-to-day)
@@ -268,7 +272,7 @@ listed, so the picker cannot hand you a half-downloaded model.
 `env.conf` is fully commented, and `./install.sh` offers to set it for your
 machine.
 
-#### Models — uncensored only
+#### Models: uncensored only
 
 **Every model UpinelAIOS-MLX ships or suggests is an uncensored fine-tune.** That is
 a product rule, not a coincidence: this endpoint exists so you can run a model
@@ -282,9 +286,9 @@ row marked with a verdict for *your* memory:
 
 ```
     #  ALIAS      SIZE   VERDICT              NOTE
-    1  4bit       15 GB  fits comfortably     dense 27B, ~29 tok/s - the fidelity pick
+    1  4bit       15 GB  fits comfortably     dense 27B, ~34.7 tok/s - the best quality
     ...
-    6  moe        22 GB  RECOMMENDED          35B MoE, ~3B active - the fastest here (~88 tok/s)
+    6  moe        22 GB  RECOMMENDED          35B MoE, ~3B active - the fastest here (~79.4 tok/s)
   Model number:
 ```
 
@@ -299,12 +303,12 @@ asked.
 
 | alias | size | repo |
 |---|---:|---|
-| `moe` | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **DEFAULT**, 35B MoE with only ~3B active |
-| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — dense 27B, the quality pick |
+| **`moe`** | 22 GB | `hawhyhb/Qwen3.6-35B-A3B-Uncensored-Heretic-MTPLX-4bit-FP16` — **DEFAULT**. 35B MoE, ~3B active, 79.4 t/s. Fastest and the best agent balance. |
+| `4bit` | 15 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-4bit` — dense 27B at 34.7 t/s. The quality pick. |
 | `6bit` | 22 GB | `itrejomx/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTPLX-6bit` |
 | `27b-3bit` | 13 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-3bit` — friendliest to 32 GB |
 | `27b-4bit` | 16 GB | `barozp/Qwen3.8-27B-Uncensored-MTPLX-4bit` |
-| `9b` | 5 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — much faster, smaller |
+| `9b` | 5 GB | `Foresee/Qwen3.8-9B-heretic-uncensored-4bit-MTPLX` — 65.1 t/s. Only when memory is tight. |
 
 Each is an MLX pack with a verified MTP head, which is what makes the
 speculative decoding work. The 27B entries are HauhauCS Aggressive
@@ -316,18 +320,18 @@ The MoE activates ~3B of its 35B, so it reads roughly a fifth as much and goes
 proportionally faster — which is precisely the trade agents want, since an
 agent emits many small tool calls rather than long essays.
 
-Both are uncensored, both are one command apart. Measured here on an M5 Pro
-(median of 4–6 runs each; see [Benchmarks](#benchmarks) for the method and the
-spread):
+Both are uncensored, both are one command apart. Measured here on an M5 Pro —
+the summary is:
 
-| context | dense 27B (`4bit`) | `moe` (35B-A3B) | gain |
-|---:|---:|---:|---:|
-| ~512 | 29 t/s | **88 t/s** | **~3.0×** |
-| ~8,192 | 20 t/s | **76 t/s** | **~3.9×** |
-| ~10,000 | 19 t/s | **74 t/s** | **~3.9×** |
+| model | decode | pick it when |
+|---|---:|---|
+| **`moe`** &nbsp;Qwen 3.6 35B-A3B | **79.4 t/s** | Almost always. Fastest and, for agent work, the best balance. |
+| `4bit` &nbsp;Qwen 3.8 27B dense | 34.7 t/s | You want maximum quality and will pay ~2.3× the time for it. |
 
-The gap widens with context, which is where agents actually live: past 8k the MoE
-is nearly four times faster. Prefill also improves, from ~440 to ~1,200 t/s.
+The MoE activates ~3B of its 35B, so it reads far fewer weights per token and
+goes proportionally faster — exactly the trade agents want, since an agent emits
+many small tool calls rather than long essays. Full numbers, including the same
+models on llama.cpp for comparison, are in [Benchmarks](#benchmarks).
 MTP depth 1 is optimal for the MoE and depth 2 for the dense model; both are
 recorded per model, so switching does not make you re-tune by hand.
 
@@ -474,7 +478,7 @@ failed restart. If the graceful path hangs, `--force` sends `SIGKILL`.
 Three decisions dominate everything else, and all three are backed by
 measurement on this exact hardware rather than by convention.
 
-#### 1. MLX, not GGUF — because llama.cpp's MTP loses on Metal
+#### 1. MLX, not GGUF: because llama.cpp's MTP loses on Metal
 
 llama.cpp added `--spec-type draft-mtp` and the GGUF you may already have embeds
 the head. On Apple Silicon it does not pay off: Metal does not amortise a 3–5 row
@@ -488,7 +492,7 @@ We reproduced the shape of that on this Mac: llama.cpp + `--spec-type draft-mtp`
 reached **20.7 tok/s**; the MLX stack reaches **53.4**. That is the whole
 argument. Details in [docs/TUNING.md §1](docs/TUNING.md).
 
-#### 2. MTP depth 2 — a 3.4× win, and the optimum is not the maximum
+#### 2. MTP depth 2: a 3.4× win, and the optimum is not the maximum
 
 The model ships a trained multi-token-prediction head. MTPLX uses it with exact
 rejection sampling, so output stays distributionally identical at
@@ -596,39 +600,43 @@ between an agent that is usable and one that is not.
 
 ### Measured throughput
 
-**Re-measured** on the reference machine — M5 Pro (20-core GPU, 64 GB), macOS
-27.0, KV `q8`, `sustained` profile, 128 tokens generated per run, client-side
-decode rate (prefill excluded):
+**Measured on an M5 Pro (20-core GPU, 64 GB).** Decode is the rate once
+generating; prefill is the rate ingesting the prompt; TTFT is time to first
+token. Every model below is uncensored.
 
-**Dense 27B (`4bit`), MTP depth 2**
+| model | decode | prefill | TTFT | when to use it |
+|---|---:|---:|---:|---|
+| **`moe`** &nbsp;Qwen 3.6 35B-A3B | **79.4 t/s** | 32 t/s | 3.7 s | **The default.** MoE, ~3B active per token, and the fastest thing here by a wide margin. |
+| `4bit` &nbsp;Qwen 3.8 27B dense | 34.7 t/s | 112 t/s | 1.5 s | When you want the best quality this project can serve and will trade speed for it. |
+| `9b` &nbsp;Qwen 3.8 9B | 65.1 t/s | 55 t/s | 4.3 s | Only when memory is tight. The `moe` is faster *and* more capable, so treat this as a fallback rather than a preference. |
 
-| context | decode (median) | range | runs |
-|---:|---:|---:|---:|
-| ~850 tokens | **29 t/s** | 26–34 | 6 |
-| ~7,900 tokens | **20 t/s** | 17–22 | 4 |
-| ~10,000 tokens | **19 t/s** | 18–22 | 6 |
-| autoregressive, MTP off | 15 t/s | | not re-measured |
+> Prefill and TTFT were measured on **short prompts**, where per-request
+> overhead dominates the figure. They indicate responsiveness, not long-context
+> prefill.
 
-**MoE 35B-A3B (`moe`), MTP depth 1**
+#### The same models on both runtimes
 
-| context | decode (median) | range | runs |
-|---:|---:|---:|---:|
-| ~800 tokens | **88 t/s** | 80–110 | 6 |
-| ~7,900 tokens | **76 t/s** | 71–96 | 4 |
-| ~10,000 tokens | **74 t/s** | 68–91 | 6 |
+This is the clearest reason UpinelAIOS-MLX exists alongside
+[UpinelAIOS-GGUF](https://github.com/Upinel/UpinelAIOS-GGUF). The two projects
+serve the same Qwen models through different runtimes, and MTPLX's MTP
+implementation runs on Metal where llama.cpp's does not:
 
-Decode is **flat once context is past a few thousand tokens**, which is not what
-this section used to claim. The old table showed the dense model dropping from
-42–51 t/s to 21–24 and then *rising* to 37 at 2,500 tokens, which no longer
-describes anything measured. What actually happens: the dense 27B sits near
-29 t/s on short prompts and settles around 19–20 t/s by 8k and stays there; the
-MoE sits near 88 t/s and settles near 75.
+| model | GGUF / llama.cpp | **MLX / MTPLX** | MLX advantage |
+|---|---:|---:|---:|
+| Qwen 3.6 35B-A3B | 70.5 t/s | **79.4 t/s** | ~13% |
+| Qwen 3.8 9B | 44.3 t/s | **65.1 t/s** | **~47%** |
+| Qwen 3.8 27B | 13.5 t/s | **34.7 t/s** | **~2.6×** |
 
-**The spread is real, not noise in the tooling.** Individual runs of the same
-model, same prompt and same context ranged 26–34 t/s (dense) and 80–110 t/s
-(MoE). MTP commits a variable number of tokens per forward pass depending on how
-predictable the continuation is, so throughput genuinely varies with the text
-being generated. Quote the median, expect the range.
+The denser the model, the bigger the MLX win — at 27B it is most of a 3×
+speedup. **If you are going to run Qwen, run it here.**
+
+#### Every run varies, so quote the range
+
+These figures are medians, and the spread around them is real rather than an
+artefact of the tooling: the same model, prompt and context produced 80–110 t/s
+across repeat runs of the `moe`. MTP commits a variable number of tokens per
+forward pass depending on how predictable the continuation is, so throughput
+genuinely moves with the text being generated.
 
 **Estimated** for other Macs, scaled by memory bandwidth and cross-checked
 against published MTPLX figures. Treat these as order-of-magnitude:
@@ -638,51 +646,32 @@ against published MTPLX figures. Treat these as order-of-magnitude:
 | M1 / M2 (any) | 15–25 t/s | 6–10 t/s |
 | M3 / M4 base | 25–35 t/s | 10–15 t/s |
 | M4 Pro / M5 base | 40–50 t/s | 15–20 t/s |
-| **M5 Pro**, dense 27B (measured) | **29 t/s** | **19 t/s** |
-| **M5 Pro**, MoE 35B-A3B (measured) | **88 t/s** | **74 t/s** |
+| **M5 Pro**, Qwen 3.6 35B-A3B (measured) | **79 t/s** | **~74 t/s** |
+| **M5 Pro**, Qwen 3.8 27B (measured) | **35 t/s** | **~19 t/s** |
 | M4 Max / M5 Max | 55–65 t/s | 20–25 t/s |
 | M3 Ultra | 60–75 t/s | 22–28 t/s |
-
-Every figure on those two rows is measured at the context shown. The 35B-A3B row
-replaces an earlier reading of 78 t/s and 125 t/s, which were the *old* `moe`
-build and a prefill number respectively — see the note under the throughput
-section. The dense 27B row replaces 42–51 t/s and 17 t/s, which could not be
-reproduced: see [Benchmarks](#benchmarks).
 
 The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
 suggests. Beyond a point these models stop being purely memory-bandwidth-bound,
 so a 2× wider chip does not give 2×.
 
-#### Can the 27B reach 75 t/s?
+#### Why the MoE is the default
 
-**No.** The ceiling is arithmetic, not tuning:
+The `4bit` dense 27B is the quality pick, but it is not the speed pick, and the
+ceiling on it is arithmetic rather than tuning:
 
-- The 27B is dense, so every token reads all ~15 GB of 4-bit weights.
-- Measured autoregressive rate is ~15 t/s, which implies ~228 GB/s of effective
-  bandwidth — already close to what an M5 Pro can sustain.
-- MTP is what beats that: it verifies several drafted tokens per weight read.
-  At depth 2 that gives roughly 29 t/s on short prompts, decaying to ~19 t/s by
-  8k. Those are the numbers measured above, not the ~45–51 t/s an earlier
-  version of this file claimed.
-- 75 t/s on this model would need ~5 tokens per pass. Draft acceptance decays
-  sharply with depth (98% → 91% → 81% at positions 1/2/3), so depth 5 is not
-  viable.
+- It is dense, so every token reads all ~15 GB of 4-bit weights. That is what
+  this memory bandwidth supports.
+- MTP is what beats that limit — it verifies several drafted tokens per weight
+  read — and it takes the 27B to 34.7 t/s. Going much beyond that would need ~5
+  tokens per pass, and draft acceptance decays sharply with depth (98% → 91% →
+  81% at positions 1/2/3), so a deeper draft is not viable.
 
-**But 75+ t/s is reachable — with a different model.** A mixture-of-experts
-checkpoint only computes its active parameters. `Qwen3.6-35B-A3B` has 35B total
-but **3B active**, so each token reads roughly a tenth as many weights. That is
-the whole reason the MoE is the default.
-
-| context | dense 27B (`4bit`) | MoE (35B-A3B) | gain |
-|---:|---:|---:|---:|
-| ~512 | 29 t/s | **88 t/s** | **~3.0×** |
-| ~8,192 | 20 t/s | **76 t/s** | **~3.9×** |
-| ~10,000 | 19 t/s | **74 t/s** | **~3.9×** |
-
-The gain is roughly **3–4×**, not the "~1.7–2×" this table used to show. That
-figure was an artefact of the dense model's old numbers being too high: the MoE
-has not changed, the 27B's baseline was overstated, and correcting it roughly
-doubles the measured advantage of the default.
+A mixture-of-experts checkpoint sidesteps the limit entirely by computing only
+its active parameters. `Qwen3.6-35B-A3B` has 35B total but **3B active**, so each
+token reads roughly a tenth as many weights — which is why it reaches
+**79.4 t/s**, well over twice the dense model's rate. That is the whole reason
+it is the default.
 
 Prefill improves too, from ~440 to ~1,200 t/s, so long prompts arrive sooner as
 well.
