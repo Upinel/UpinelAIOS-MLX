@@ -114,6 +114,7 @@ as it found it.
   - [Measured throughput](#measured-throughput)
     - [The same models on both runtimes](#the-same-models-on-both-runtimes)
     - [Every run varies, so quote the range](#every-run-varies-so-quote-the-range)
+    - [M5 Neural Accelerators](#m5-neural-accelerators)
     - [Why the MoE is the default](#why-the-moe-is-the-default)
   - [Making it faster](#making-it-faster)
   - [Benchmarking](#benchmarking)
@@ -654,6 +655,30 @@ against published MTPLX figures. Treat these as order-of-magnitude:
 The jump from M5 Pro to M5 Max is much smaller than the bandwidth ratio
 suggests. Beyond a point these models stop being purely memory-bandwidth-bound,
 so a 2× wider chip does not give 2×.
+
+#### M5 Neural Accelerators
+
+Apple's **M5** puts a Neural Accelerator in every GPU core, reachable through
+the Metal 4 tensor API. **MLX already uses it.** Its runtime ships separate
+`nax` kernel variants — the metallib carries **21,660 `matmul2d` entries** — and
+picks them by GPU architecture at load time.
+
+There is nothing to switch on, and no setting for it here by design: MLX exposes
+no supported toggle, and a config key that silently did nothing would be worse
+than no key. M1–M4 simply have no Neural Accelerator, so there is nothing to
+decide either way.
+
+The sister [GGUF project](https://github.com/Upinel/UpinelAIOS-GGUF) *can* be
+toggled, because llama.cpp reads `GGML_METAL_TENSOR_ENABLE` / `_DISABLE` at
+device init. Measured there on the same M5 Pro, on an 8k prompt:
+
+| tensor API | prefill | TTFT |
+|---|---:|---:|
+| on | **1,376 t/s** | **5.82 s** |
+| off | 697 t/s | 11.48 s |
+
+**~1.97× prefill**, with decode unchanged. That is the size of the prize, and
+this runtime collects it automatically.
 
 #### Why the MoE is the default
 
